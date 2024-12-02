@@ -1,0 +1,10 @@
+[package]
+name = "ash_renderer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.93"
+ash = "0.38.0"
+ash-window = "0.13.0"
+winit = { version = "0.30.5", features = ["rwh_06"] }
