@@ -5,11 +5,14 @@ use std::{
 
 use ash::{
     ext::debug_utils,
-    khr::{surface, swapchain},
+    khr::{dynamic_rendering, surface, swapchain},
     vk::{self, PhysicalDeviceType},
     Instance,
 };
-use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+use winit::{
+    raw_window_handle::{HasDisplayHandle, HasWindowHandle},
+    window::WindowAttributes,
+};
 
 pub struct Renderer {
     instance: Instance,
@@ -20,10 +23,11 @@ pub struct Renderer {
     debug_callback: vk::DebugUtilsMessengerEXT,
 
     physical_device: vk::PhysicalDevice,
-    physical_device_memory_properties: vk::PhysicalDeviceMemoryProperties,
+    device_memory_properties: vk::PhysicalDeviceMemoryProperties,
     queue_family_index: u32,
     present_queue: vk::Queue,
 
+    pub window: winit::window::Window,
     surface: vk::SurfaceKHR,
     surface_format: vk::SurfaceFormatKHR,
     surface_resolution: vk::Extent2D,
@@ -48,10 +52,10 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(
-        window: &winit::window::Window,
-        event_loop: winit::event_loop::ActiveEventLoop,
-    ) -> Self {
+    pub fn new(event_loop: &winit::event_loop::ActiveEventLoop) -> Self {
+        let window = event_loop
+            .create_window(WindowAttributes::default())
+            .expect("Failed to create winit window");
         let validation_layer_names =
             [CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap()];
         let validation_layer_names_raw: Vec<*const c_char> = validation_layer_names
@@ -145,6 +149,8 @@ impl Renderer {
             shader_clip_distance: 1,
             ..Default::default()
         };
+        let mut dynamic_rendering_features =
+            vk::PhysicalDeviceDynamicRenderingFeatures::default().dynamic_rendering(true);
         let priorities = [1.0];
         let queue_info = vk::DeviceQueueCreateInfo::default()
             .queue_family_index(queue_family_index)
@@ -152,6 +158,7 @@ impl Renderer {
         let device_create_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(std::slice::from_ref(&queue_info))
             .enabled_extension_names(&device_extension_names_raw)
+            .push_next(&mut dynamic_rendering_features)
             .enabled_features(&features);
         let device = unsafe {
             instance
@@ -374,7 +381,8 @@ impl Renderer {
             debug_utils_loader,
             debug_callback,
             physical_device,
-            physical_device_memory_properties: todo!(),
+            device_memory_properties,
+            window,
             queue_family_index,
             present_queue,
             surface,
@@ -394,6 +402,33 @@ impl Renderer {
             draw_commands_reuse_fence,
             setup_commands_reuse_fence,
         }
+    }
+
+    pub fn draw_frame(&mut self) {
+        let (present_index, _) = unsafe {
+            self.swapchain_loader
+                .acquire_next_image(
+                    self.swapchain,
+                    u64::MAX,
+                    self.present_complete_semaphore,
+                    vk::Fence::null(),
+                )
+                .unwrap()
+        };
+
+        let color_attachment = vk::RenderingAttachmentInfo::default()
+            .image_layout(vk::ImageLayout::ATTACHMENT_OPTIMAL)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .image_view(self.present_image_views[present_index as usize]);
+        let depth_attachment = vk::RenderingAttachmentInfo::default()
+            .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .image_view(self.depth_image_view);
+        let rendering_info = vk::RenderingInfo::default()
+            .depth_attachment(&depth_attachment)
+            .color_attachments(&[color_attachment])
+            .layer_count(1);
     }
 }
 
