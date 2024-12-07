@@ -7,7 +7,7 @@ use std::{
 use ash::{
     ext::debug_utils,
     khr::{surface, swapchain},
-    vk::{self, Handle, PhysicalDeviceType},
+    vk::{self, Handle, ImageSubresourceRange, PhysicalDeviceType},
     Instance,
 };
 use winit::{
@@ -53,10 +53,20 @@ pub struct Renderer {
     draw_commands_reuse_fence: vk::Fence,
     setup_commands_reuse_fence: vk::Fence,
 
+    vertex_shader_module: vk::ShaderModule,
+    fragment_shader_module: vk::ShaderModule,
+
     graphics_pipeline: vk::Pipeline,
+    pipeline_layout: vk::PipelineLayout,
+
     scissors: [vk::Rect2D; 1],
+    viewports: [vk::Viewport; 1],
+
+    vertex_input_buffer_memory: vk::DeviceMemory,
     vertex_input_buffer: vk::Buffer,
+    index_buffer_memory: vk::DeviceMemory,
     index_buffer: vk::Buffer,
+
 }
 
 impl Renderer {
@@ -218,8 +228,8 @@ impl Renderer {
 
         let surface_resolution = match surface_capabilities.current_extent.width {
             u32::MAX => vk::Extent2D {
-                width: window.inner_size().width,
-                height: window.inner_size().height,
+                width: window.inner_size().width.max(1),
+                height: window.inner_size().height.max(1),
             },
             _ => surface_capabilities.current_extent,
         };
@@ -322,7 +332,7 @@ impl Renderer {
             .extent(surface_resolution.into())
             .mip_levels(1)
             .array_layers(1)
-            .samples(vk::SampleCountFlags::TYPE_4)
+            .samples(vk::SampleCountFlags::TYPE_1)
             .tiling(vk::ImageTiling::OPTIMAL)
             .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
@@ -737,10 +747,16 @@ impl Renderer {
             rendering_complete_semaphore,
             draw_commands_reuse_fence,
             setup_commands_reuse_fence,
+            pipeline_layout,
             graphics_pipeline,
             scissors,
+            viewports,
             vertex_input_buffer,
             index_buffer,
+            vertex_shader_module,
+            fragment_shader_module,
+            vertex_input_buffer_memory,
+            index_buffer_memory,
         }
     }
 
@@ -771,7 +787,8 @@ impl Renderer {
         let rendering_info = vk::RenderingInfo::default()
             .depth_attachment(&depth_attachment)
             .color_attachments(color_attachments)
-            .layer_count(1);
+            .layer_count(1)
+            .render_area(self.surface_resolution.into());
 
         record_submit_commandbuffer(
             &self.device,
@@ -783,8 +800,39 @@ impl Renderer {
             &[self.rendering_complete_semaphore],
             |device, draw_command_buffer| {
                 unsafe {
+
+                    // dynamic rendering image layout transiton. see https://lesleylai.info/en/vk-khr-dynamic-rendering/
+                    let image_subresource_range = ImageSubresourceRange::default()
+                        .aspect_mask(vk::ImageAspectFlags::COLOR)
+                        .base_mip_level(0)
+                        .level_count(1)
+                        .base_array_layer(0)
+                        .layer_count(1);
+                    let image_memory_barrier = vk::ImageMemoryBarrier::default()
+                        .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+                        .old_layout(vk::ImageLayout::UNDEFINED)
+                        .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                        .image(self.present_images[present_index as usize])
+                        .subresource_range(image_subresource_range);
+                    device.cmd_pipeline_barrier(
+                        draw_command_buffer,
+                        vk::PipelineStageFlags::TOP_OF_PIPE,
+                        vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                        vk::DependencyFlags::empty(),
+                        &[],
+                        &[],
+                        &[image_memory_barrier],
+                    );
+
+                    // rendering
                     device.cmd_begin_rendering(self.draw_command_buffer, &rendering_info);
+                    device.cmd_bind_pipeline(
+                        draw_command_buffer,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        self.graphics_pipeline,
+                    );
                     device.cmd_set_scissor(draw_command_buffer, 0, &self.scissors);
+                    device.cmd_set_viewport(draw_command_buffer, 0, &self.viewports);
                     device.cmd_bind_vertex_buffers(
                         draw_command_buffer,
                         0,
@@ -799,6 +847,29 @@ impl Renderer {
                     );
                     device.cmd_draw_indexed(draw_command_buffer, INDICES.len() as u32, 1, 0, 0, 1);
                     device.cmd_end_rendering(draw_command_buffer);
+                    
+                    // dynamic rendering image layout transiton. see https://lesleylai.info/en/vk-khr-dynamic-rendering/
+                    let image_subresource_range = ImageSubresourceRange::default()
+                        .aspect_mask(vk::ImageAspectFlags::COLOR)
+                        .base_mip_level(0)
+                        .level_count(1)
+                        .base_array_layer(0)
+                        .layer_count(1);
+                    let image_memory_barrier = vk::ImageMemoryBarrier::default()
+                        .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+                        .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                        .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                        .image(self.present_images[present_index as usize])
+                        .subresource_range(image_subresource_range);
+                    device.cmd_pipeline_barrier(
+                        draw_command_buffer,
+                        vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                        vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                        vk::DependencyFlags::empty(),
+                        &[],
+                        &[],
+                        &[image_memory_barrier],
+                    );
                 };
             },
         );
@@ -844,6 +915,14 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
             self.device.device_wait_idle().unwrap();
+            self.device.destroy_pipeline(self.graphics_pipeline, None);
+            self.device.destroy_pipeline_layout(self.pipeline_layout, None);
+            self.device.destroy_shader_module(self.vertex_shader_module, None);
+            self.device.destroy_shader_module(self.fragment_shader_module, None);
+            self.device.free_memory(self.vertex_input_buffer_memory, None);
+            self.device.destroy_buffer(self.vertex_input_buffer, None);
+            self.device.free_memory(self.index_buffer_memory, None);
+            self.device.destroy_buffer(self.index_buffer, None);
             self.device
                 .destroy_semaphore(self.present_complete_semaphore, None);
             self.device
