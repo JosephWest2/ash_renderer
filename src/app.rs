@@ -29,6 +29,7 @@ impl winit::application::ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::RedrawRequested => {
+                eprintln!("Draw");
                 self.renderer.as_mut().unwrap().draw_frame();
                 self.renderer.as_mut().unwrap().window.request_redraw();
             },
