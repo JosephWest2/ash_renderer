@@ -1,6 +1,6 @@
 use winit::event::WindowEvent;
 
-use crate::renderer::Renderer;
+use crate::{renderer::{self, Renderer}, test};
 
 pub struct App {
     pub renderer: Option<Renderer>,
@@ -27,13 +27,15 @@ impl winit::application::ApplicationHandler for App {
         event: winit::event::WindowEvent,
     ) {
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
+            }
             WindowEvent::RedrawRequested => {
                 eprintln!("Draw");
                 self.renderer.as_mut().unwrap().draw_frame();
                 self.renderer.as_mut().unwrap().window.request_redraw();
-            },
-            _ => ()
+            }
+            _ => (),
         }
     }
 }

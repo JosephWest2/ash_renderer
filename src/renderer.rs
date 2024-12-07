@@ -1,7 +1,7 @@
 use std::{
     borrow::Cow,
     ffi::{c_char, CStr},
-    mem::offset_of,
+    mem::offset_of, sync::Arc,
 };
 
 use ash::{
@@ -18,7 +18,8 @@ use winit::{
 use crate::shaders;
 
 pub struct Renderer {
-    instance: Instance,
+    entry: ash::Entry,
+    instance: ash::Instance,
     device: ash::Device,
     surface_loader: surface::Instance,
     swapchain_loader: swapchain::Device,
@@ -56,7 +57,7 @@ pub struct Renderer {
     vertex_shader_module: vk::ShaderModule,
     fragment_shader_module: vk::ShaderModule,
 
-    graphics_pipeline: vk::Pipeline,
+    graphics_pipelines: Vec<vk::Pipeline>,
     pipeline_layout: vk::PipelineLayout,
 
     scissors: [vk::Rect2D; 1],
@@ -66,7 +67,6 @@ pub struct Renderer {
     vertex_input_buffer: vk::Buffer,
     index_buffer_memory: vk::DeviceMemory,
     index_buffer: vk::Buffer,
-
 }
 
 impl Renderer {
@@ -717,9 +717,11 @@ impl Renderer {
                 .expect("Failed to create graphics pipelines")
         };
 
-        let graphics_pipeline = graphics_pipelines[0];
+        eprintln!("instance handle: {:?}", instance.handle());
+        eprintln!("device handle: {:?}", device.handle());
 
         Self {
+            entry,
             instance,
             device,
             surface_loader,
@@ -748,7 +750,6 @@ impl Renderer {
             draw_commands_reuse_fence,
             setup_commands_reuse_fence,
             pipeline_layout,
-            graphics_pipeline,
             scissors,
             viewports,
             vertex_input_buffer,
@@ -757,10 +758,16 @@ impl Renderer {
             fragment_shader_module,
             vertex_input_buffer_memory,
             index_buffer_memory,
+            graphics_pipelines,
         }
     }
 
     pub fn draw_frame(&mut self) {
+        unsafe {
+            self.device
+                .wait_for_fences(&[self.draw_commands_reuse_fence], true, u64::MAX)
+                .unwrap()
+        };
         let (present_index, _) = unsafe {
             self.swapchain_loader
                 .acquire_next_image(
@@ -800,7 +807,6 @@ impl Renderer {
             &[self.rendering_complete_semaphore],
             |device, draw_command_buffer| {
                 unsafe {
-
                     // dynamic rendering image layout transiton. see https://lesleylai.info/en/vk-khr-dynamic-rendering/
                     let image_subresource_range = ImageSubresourceRange::default()
                         .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -829,7 +835,7 @@ impl Renderer {
                     device.cmd_bind_pipeline(
                         draw_command_buffer,
                         vk::PipelineBindPoint::GRAPHICS,
-                        self.graphics_pipeline,
+                        self.graphics_pipelines[0],
                     );
                     device.cmd_set_scissor(draw_command_buffer, 0, &self.scissors);
                     device.cmd_set_viewport(draw_command_buffer, 0, &self.viewports);
@@ -847,7 +853,7 @@ impl Renderer {
                     );
                     device.cmd_draw_indexed(draw_command_buffer, INDICES.len() as u32, 1, 0, 0, 1);
                     device.cmd_end_rendering(draw_command_buffer);
-                    
+
                     // dynamic rendering image layout transiton. see https://lesleylai.info/en/vk-khr-dynamic-rendering/
                     let image_subresource_range = ImageSubresourceRange::default()
                         .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -915,36 +921,66 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
             self.device.device_wait_idle().unwrap();
-            self.device.destroy_pipeline(self.graphics_pipeline, None);
-            self.device.destroy_pipeline_layout(self.pipeline_layout, None);
-            self.device.destroy_shader_module(self.vertex_shader_module, None);
-            self.device.destroy_shader_module(self.fragment_shader_module, None);
-            self.device.free_memory(self.vertex_input_buffer_memory, None);
+            eprintln!("pipeline idle");
+            for &pipeline in self.graphics_pipelines.iter() {
+                self.device.destroy_pipeline(pipeline, None);
+            }
+            eprintln!("pipelines destroyed");
+            self.device
+                .destroy_pipeline_layout(self.pipeline_layout, None);
+            eprintln!("pipeline layout destroyed");
+            self.device
+                .destroy_shader_module(self.vertex_shader_module, None);
+            eprintln!("vert shader module destroyed");
+            self.device
+                .destroy_shader_module(self.fragment_shader_module, None);
+            eprintln!("frag shader module destroyed");
+            self.device
+                .free_memory(self.vertex_input_buffer_memory, None);
+            eprintln!("vert input buffer memory freed");
             self.device.destroy_buffer(self.vertex_input_buffer, None);
+            eprintln!("vert input buffer destroyed");
             self.device.free_memory(self.index_buffer_memory, None);
+            eprintln!("index buffer memory freed");
             self.device.destroy_buffer(self.index_buffer, None);
+            eprintln!("index buffer destroyed");
             self.device
                 .destroy_semaphore(self.present_complete_semaphore, None);
+            eprintln!("present complete semaphore destroyed");
             self.device
                 .destroy_semaphore(self.rendering_complete_semaphore, None);
+            eprintln!("rendering complete semaphore destroyed");
             self.device
                 .destroy_fence(self.draw_commands_reuse_fence, None);
+            eprintln!("draw commands reuse fence destroyed");
             self.device
                 .destroy_fence(self.setup_commands_reuse_fence, None);
+            eprintln!("setup commands reuse fence destroyed");
             self.device.free_memory(self.depth_image_memory, None);
+            eprintln!("depth image memory freed");
             self.device.destroy_image_view(self.depth_image_view, None);
+            eprintln!("depth image view destroyed");
             self.device.destroy_image(self.depth_image, None);
+            eprintln!("depht image destroyed");
             for &image_view in self.present_image_views.iter() {
                 self.device.destroy_image_view(image_view, None);
             }
+            eprintln!("present image views destroyed");
             self.device.destroy_command_pool(self.pool, None);
+            eprintln!("command pool destroyed");
             self.swapchain_loader
                 .destroy_swapchain(self.swapchain, None);
+            eprintln!("swapchain destroyed");
+            eprintln!(" HANDLE: {:?}", self.device.handle());
             self.device.destroy_device(None);
+            eprintln!("device destroyed");
             self.surface_loader.destroy_surface(self.surface, None);
+            eprintln!("surface destroyed");
             self.debug_utils_loader
                 .destroy_debug_utils_messenger(self.debug_callback, None);
+            eprintln!("debug messenger destroyed");
             self.instance.destroy_instance(None);
+            eprintln!("instance destroyed");
         }
     }
 }
@@ -1024,7 +1060,9 @@ fn record_submit_commandbuffer<F: FnOnce(&ash::Device, vk::CommandBuffer)>(
         device
             .begin_command_buffer(command_buffer, &command_buffer_begin_info)
             .expect("Begin commandbuffer");
+
         f(device, command_buffer);
+
         device
             .end_command_buffer(command_buffer)
             .expect("End commandbuffer");
