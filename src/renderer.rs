@@ -1,14 +1,13 @@
 use std::{
     borrow::Cow,
     ffi::{c_char, CStr},
-    mem::offset_of, sync::Arc,
+    mem::offset_of,
 };
 
 use ash::{
     ext::debug_utils,
     khr::{surface, swapchain},
-    vk::{self, Handle, ImageSubresourceRange, PhysicalDeviceType},
-    Instance,
+    vk::{self, ImageSubresourceRange, PhysicalDeviceType},
 };
 use winit::{
     raw_window_handle::{HasDisplayHandle, HasWindowHandle},
@@ -17,14 +16,18 @@ use winit::{
 
 use crate::shaders;
 
+#[allow(unused)]
 pub struct Renderer {
+
+    //Core
     entry: ash::Entry,
     instance: ash::Instance,
     device: ash::Device,
-    surface_loader: surface::Instance,
-    swapchain_loader: swapchain::Device,
     debug_utils_loader: debug_utils::Instance,
     debug_callback: vk::DebugUtilsMessengerEXT,
+
+    surface_loader: surface::Instance,
+    swapchain_loader: swapchain::Device,
 
     physical_device: vk::PhysicalDevice,
     device_memory_properties: vk::PhysicalDeviceMemoryProperties,
@@ -67,6 +70,8 @@ pub struct Renderer {
     vertex_input_buffer: vk::Buffer,
     index_buffer_memory: vk::DeviceMemory,
     index_buffer: vk::Buffer,
+
+    window_resized: bool,
 }
 
 impl Renderer {
@@ -759,7 +764,17 @@ impl Renderer {
             vertex_input_buffer_memory,
             index_buffer_memory,
             graphics_pipelines,
+            window_resized: false,
         }
+    }
+
+    fn build_swapchain(&mut self) -> (
+
+        ) {
+        unsafe { self.device.device_wait_idle().unwrap() };
+        unsafe { self.swapchain_loader.destroy_swapchain(self.swapchain, None) };
+
+
     }
 
     pub fn draw_frame(&mut self) {
@@ -768,7 +783,7 @@ impl Renderer {
                 .wait_for_fences(&[self.draw_commands_reuse_fence], true, u64::MAX)
                 .unwrap()
         };
-        let (present_index, _) = unsafe {
+        let (present_index, suboptimal) = unsafe {
             self.swapchain_loader
                 .acquire_next_image(
                     self.swapchain,
@@ -971,7 +986,6 @@ impl Drop for Renderer {
             self.swapchain_loader
                 .destroy_swapchain(self.swapchain, None);
             eprintln!("swapchain destroyed");
-            eprintln!(" HANDLE: {:?}", self.device.handle());
             self.device.destroy_device(None);
             eprintln!("device destroyed");
             self.surface_loader.destroy_surface(self.surface, None);
