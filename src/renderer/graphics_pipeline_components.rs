@@ -131,7 +131,7 @@ impl GraphicsPipelineComponents {
     }
 }
 
-pub fn cleanup_graphics_pipelines(
+pub fn cleanup_graphics_pipeline_components(
     device: &ash::Device,
     graphics_pipeline_components: &GraphicsPipelineComponents,
 ) {
