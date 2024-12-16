@@ -19,10 +19,11 @@ impl DepthImageComponents {
         setup_commands_reuse_fence: &vk::Fence,
         present_queue: &vk::Queue,
     ) -> Self {
+        let sr = surface_resolution.clone();
         let depth_image_create_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .format(DEPTH_IMAGE_FORMAT)
-            .extent((*surface_resolution).into())
+            .extent(sr.into())
             .mip_levels(1)
             .array_layers(1)
             .samples(vk::SampleCountFlags::TYPE_1)
@@ -50,6 +51,8 @@ impl DepthImageComponents {
                 .allocate_memory(&depth_image_allocate_info, None)
                 .unwrap()
         };
+
+        unsafe { device.bind_image_memory(depth_image, depth_image_memory, 0).expect("Faile to bind depth image memory") };
 
         record_submit_commandbuffer(
             &device,
@@ -105,7 +108,6 @@ impl DepthImageComponents {
                 .unwrap()
         };
 
-
         Self {
             depth_image,
             depth_image_memory,
@@ -114,7 +116,10 @@ impl DepthImageComponents {
     }
 }
 
-pub fn cleanup_depth_image_components(device: &ash::Device, depth_image_components: &DepthImageComponents) {
+pub fn cleanup_depth_image_components(
+    device: &ash::Device,
+    depth_image_components: &DepthImageComponents,
+) {
     unsafe {
         device.device_wait_idle().unwrap();
         device.destroy_image_view(depth_image_components.depth_image_view, None);
