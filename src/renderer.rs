@@ -709,7 +709,7 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
             self.device.device_wait_idle().unwrap();
-            graphics_pipeline_components::cleanup_graphics_pipelines(
+            graphics_pipeline_components::cleanup_graphics_pipeline_components(
                 &self.device,
                 &self.graphics_pipeline_components,
             );
