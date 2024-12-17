@@ -34,7 +34,6 @@ impl winit::application::ApplicationHandler for App {
                 self.renderer.as_mut().unwrap().resize_dependent_component_rebuild_needed = true;
             }
             WindowEvent::RedrawRequested => {
-                eprintln!("Draw");
                 self.renderer.as_mut().unwrap().draw_frame();
                 self.renderer.as_mut().unwrap().window.request_redraw();
             }

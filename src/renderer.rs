@@ -16,8 +16,10 @@ use winit::{
 };
 
 use crate::shaders;
+mod camera;
 mod graphics_pipeline_components;
 mod resize_dependent_components;
+mod debug_components;
 
 // Assume unused variables are required for persistence
 #[allow(unused)]
@@ -25,8 +27,9 @@ pub struct Renderer {
     entry: ash::Entry,
     instance: ash::Instance,
     device: ash::Device,
-    debug_utils_loader: debug_utils::Instance,
-    debug_callback: vk::DebugUtilsMessengerEXT,
+
+    #[cfg(debug_assertions)]
+    debug_components: debug_components::DebugComponents,
 
     surface_loader: surface::Instance,
     swapchain_loader: swapchain::Device,
@@ -73,10 +76,14 @@ impl Renderer {
         let validation_layer_names =
             [CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap()];
 
-        let validation_layer_names_raw: Vec<*const c_char> = validation_layer_names
-            .iter()
-            .map(|name| name.as_ptr())
-            .collect();
+        let validation_layer_names_raw: Vec<*const c_char> = if cfg!(debug_assertions) {
+            validation_layer_names
+                .iter()
+                .map(|name| name.as_ptr())
+                .collect()
+        } else {
+            vec![]
+        };
 
         let mut extension_names =
             ash_window::enumerate_required_extensions(window.display_handle().unwrap().as_raw())
@@ -95,26 +102,8 @@ impl Renderer {
 
         let instance = unsafe { entry.create_instance(&instance_create_info, None).unwrap() };
 
-        let debug_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
-            .message_severity(
-                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
-            )
-            .message_type(
-                vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                    | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-            )
-            .pfn_user_callback(Some(vulkan_debug_callback));
-
-        let debug_utils_loader = debug_utils::Instance::new(&entry, &instance);
-
-        let debug_callback = unsafe {
-            debug_utils_loader
-                .create_debug_utils_messenger(&debug_info, None)
-                .unwrap()
-        };
+        #[cfg(debug_assertions)]
+        let debug_components = debug_components::DebugComponents::new(&entry, &instance);
 
         let surface = unsafe {
             ash_window::create_surface(
@@ -444,8 +433,6 @@ impl Renderer {
             device,
             surface_loader,
             swapchain_loader,
-            debug_utils_loader,
-            debug_callback,
             physical_device,
             device_memory_properties,
             window,
@@ -468,10 +455,11 @@ impl Renderer {
             vertex_input_buffer_memory,
             index_buffer_memory,
             resize_dependent_component_rebuild_needed: false,
+
+            #[cfg(debug_assertions)]
+            debug_components,
         }
     }
-
-    pub fn resize(&mut self) {}
 
     pub fn draw_frame(&mut self) {
         if self.resize_dependent_component_rebuild_needed {
@@ -738,39 +726,11 @@ impl Drop for Renderer {
             self.device.destroy_command_pool(self.pool, None);
             self.device.destroy_device(None);
             self.surface_loader.destroy_surface(self.surface, None);
-            self.debug_utils_loader
-                .destroy_debug_utils_messenger(self.debug_callback, None);
+            #[cfg(debug_assertions)]
+            debug_components::cleanup_debug_components(&self.debug_components);
             self.instance.destroy_instance(None);
         }
     }
-}
-
-unsafe extern "system" fn vulkan_debug_callback(
-    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
-    message_type: vk::DebugUtilsMessageTypeFlagsEXT,
-    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT<'_>,
-    _user_data: *mut std::os::raw::c_void,
-) -> vk::Bool32 {
-    let callback_data = *p_callback_data;
-    let message_id_number = callback_data.message_id_number;
-
-    let message_id_name = if callback_data.p_message_id_name.is_null() {
-        Cow::from("")
-    } else {
-        CStr::from_ptr(callback_data.p_message_id_name).to_string_lossy()
-    };
-
-    let message = if callback_data.p_message.is_null() {
-        Cow::from("")
-    } else {
-        CStr::from_ptr(callback_data.p_message).to_string_lossy()
-    };
-
-    println!(
-        "{message_severity:?}:\n{message_type:?} [{message_id_name} ({message_id_number})] : {message}\n",
-    );
-
-    vk::FALSE
 }
 
 fn find_memorytype_index(

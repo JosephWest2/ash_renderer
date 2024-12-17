@@ -12,9 +12,6 @@ fn main() {
     env::set_var("RUST_BACKTRACE", "full");
 
 
-
-
-
     let mut app = app::App { renderer: None };
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     event_loop.set_control_flow(ControlFlow::Poll);
