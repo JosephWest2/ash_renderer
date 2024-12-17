@@ -4,7 +4,6 @@ use winit::event_loop::{ControlFlow, EventLoop};
 
 mod app;
 mod renderer;
-mod shaders;
 mod test;
 
 
