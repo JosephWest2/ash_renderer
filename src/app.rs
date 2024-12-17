@@ -2,11 +2,11 @@ use winit::event::WindowEvent;
 
 use crate::renderer::Renderer;
 
-pub struct App<'a> {
-    pub renderer: Option<Renderer<'a>>,
+pub struct App {
+    pub renderer: Option<Renderer>,
 }
 
-impl winit::application::ApplicationHandler for App<'_> {
+impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         self.renderer = Some(Renderer::new(&event_loop));
         self.renderer.as_mut().unwrap().window.request_redraw();

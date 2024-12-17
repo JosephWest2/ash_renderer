@@ -19,7 +19,7 @@ mod shader_components;
 
 // Assume unused variables are required for persistence
 #[allow(unused)]
-pub struct Renderer<'a> {
+pub struct Renderer {
     entry: ash::Entry,
     instance: ash::Instance,
     device: ash::Device,
@@ -50,7 +50,7 @@ pub struct Renderer<'a> {
     draw_commands_reuse_fence: vk::Fence,
     setup_commands_reuse_fence: vk::Fence,
 
-    shader_components: shader_components::ShaderComponents<'a>,
+    shader_components: shader_components::ShaderComponents,
 
     graphics_pipeline_components: graphics_pipeline_components::GraphicsPipelineComponents,
 
@@ -59,7 +59,7 @@ pub struct Renderer<'a> {
     pub resize_dependent_component_rebuild_needed: bool,
 }
 
-impl Renderer<'_> {
+impl Renderer {
     pub fn new(event_loop: &winit::event_loop::ActiveEventLoop) -> Self {
         let window = event_loop
             .create_window(WindowAttributes::default())
@@ -261,7 +261,7 @@ impl Renderer<'_> {
             &resize_dependent_components
                 .swapchain_components
                 .surface_format,
-            &shader_components.pipeline_shader_stage_infos,
+            &shader_components.shader_stage_infos(),
             &resize_dependent_components.scissors,
             &resize_dependent_components.viewports,
         );
@@ -511,7 +511,7 @@ impl Renderer<'_> {
     }
 }
 
-impl Drop for Renderer<'_> {
+impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
             self.device.device_wait_idle().unwrap();

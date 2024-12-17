@@ -1,12 +1,11 @@
-use ash::vk;
+use ash::vk::{self, PipelineShaderStageCreateInfo};
 
-pub struct ShaderComponents<'a> {
+pub struct ShaderComponents {
     vertex_shader_module: vk::ShaderModule,
     fragment_shader_module: vk::ShaderModule,
-    pub pipeline_shader_stage_infos: [vk::PipelineShaderStageCreateInfo<'a>; 2],
 }
 
-impl ShaderComponents<'_> {
+impl ShaderComponents {
     pub fn new(device: &ash::Device) -> Self {
         let vertex_shader_code = compile_shader(
             &include_str!("../../shaders/vertex_shader.glsl"),
@@ -40,26 +39,26 @@ impl ShaderComponents<'_> {
                 .expect("Failed to create fragment shader module")
         };
 
-        let pipeline_shader_stage_infos = [
+        Self {
+            vertex_shader_module,
+            fragment_shader_module,
+        }
+    }
+    pub fn shader_stage_infos(&self) -> Vec<vk::PipelineShaderStageCreateInfo> {
+        vec![
             vk::PipelineShaderStageCreateInfo {
-                module: vertex_shader_module,
+                module: self.vertex_shader_module,
                 p_name: c"main".as_ptr(),
                 stage: vk::ShaderStageFlags::VERTEX,
                 ..Default::default()
             },
             vk::PipelineShaderStageCreateInfo {
-                module: fragment_shader_module,
+                module: self.fragment_shader_module,
                 p_name: c"main".as_ptr(),
                 stage: vk::ShaderStageFlags::FRAGMENT,
                 ..Default::default()
             },
-        ];
-
-        Self {
-            vertex_shader_module,
-            fragment_shader_module,
-            pipeline_shader_stage_infos,
-        }
+        ]
     }
     pub fn cleanup(&self, device: &ash::Device) {
         unsafe {
