@@ -123,18 +123,13 @@ impl SwapchainComponents {
             surface_format,
         }
     }
-}
-
-pub fn cleanup_swapchain_components(
-    device: &ash::Device,
-    swapchain_loader: &swapchain::Device,
-    swapchain_components: &SwapchainComponents,
-) {
-    unsafe {
-        device.device_wait_idle().unwrap();
-        for &view in swapchain_components.present_image_views.iter() {
-            device.destroy_image_view(view, None);
-        }
-        swapchain_loader.destroy_swapchain(swapchain_components.swapchain, None)
-    };
+    pub fn cleanup(&self, device: &ash::Device, swapchain_loader: &swapchain::Device) {
+        unsafe {
+            device.device_wait_idle().unwrap();
+            for &view in self.present_image_views.iter() {
+                device.destroy_image_view(view, None);
+            }
+            swapchain_loader.destroy_swapchain(self.swapchain, None)
+        };
+    }
 }

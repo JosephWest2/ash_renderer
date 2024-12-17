@@ -52,7 +52,11 @@ impl DepthImageComponents {
                 .unwrap()
         };
 
-        unsafe { device.bind_image_memory(depth_image, depth_image_memory, 0).expect("Faile to bind depth image memory") };
+        unsafe {
+            device
+                .bind_image_memory(depth_image, depth_image_memory, 0)
+                .expect("Faile to bind depth image memory")
+        };
 
         record_submit_commandbuffer(
             &device,
@@ -114,16 +118,12 @@ impl DepthImageComponents {
             depth_image_view,
         }
     }
-}
-
-pub fn cleanup_depth_image_components(
-    device: &ash::Device,
-    depth_image_components: &DepthImageComponents,
-) {
-    unsafe {
-        device.device_wait_idle().unwrap();
-        device.destroy_image_view(depth_image_components.depth_image_view, None);
-        device.destroy_image(depth_image_components.depth_image, None);
-        device.free_memory(depth_image_components.depth_image_memory, None);
+    pub fn cleanup(&self, device: &ash::Device) {
+        unsafe {
+            device.device_wait_idle().unwrap();
+            device.destroy_image_view(self.depth_image_view, None);
+            device.destroy_image(self.depth_image, None);
+            device.free_memory(self.depth_image_memory, None);
+        }
     }
 }

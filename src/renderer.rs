@@ -1,11 +1,6 @@
-use std::{
-    borrow::Cow,
-    ffi::{c_char, CStr},
-    mem::offset_of,
-};
+use std::ffi::{c_char, CStr};
 
 use ash::{
-    ext::debug_utils,
     khr::{surface, swapchain},
     vk::{self, ImageSubresourceRange, PhysicalDeviceType},
 };
@@ -15,15 +10,16 @@ use winit::{
     window::WindowAttributes,
 };
 
-use crate::shaders;
+mod buffer_components;
 mod camera;
+mod debug_components;
 mod graphics_pipeline_components;
 mod resize_dependent_components;
-mod debug_components;
+mod shader_components;
 
 // Assume unused variables are required for persistence
 #[allow(unused)]
-pub struct Renderer {
+pub struct Renderer<'a> {
     entry: ash::Entry,
     instance: ash::Instance,
     device: ash::Device,
@@ -44,7 +40,7 @@ pub struct Renderer {
 
     resize_dependent_components: resize_dependent_components::ResizeDependentComponents,
 
-    pool: vk::CommandPool,
+    command_pool: vk::CommandPool,
     draw_command_buffer: vk::CommandBuffer,
     setup_command_buffer: vk::CommandBuffer,
 
@@ -54,20 +50,16 @@ pub struct Renderer {
     draw_commands_reuse_fence: vk::Fence,
     setup_commands_reuse_fence: vk::Fence,
 
-    vertex_shader_module: vk::ShaderModule,
-    fragment_shader_module: vk::ShaderModule,
+    shader_components: shader_components::ShaderComponents<'a>,
 
     graphics_pipeline_components: graphics_pipeline_components::GraphicsPipelineComponents,
 
-    vertex_input_buffer_memory: vk::DeviceMemory,
-    vertex_input_buffer: vk::Buffer,
-    index_buffer_memory: vk::DeviceMemory,
-    index_buffer: vk::Buffer,
+    buffer_components: buffer_components::BufferComponents,
 
     pub resize_dependent_component_rebuild_needed: bool,
 }
 
-impl Renderer {
+impl Renderer<'_> {
     pub fn new(event_loop: &winit::event_loop::ActiveEventLoop) -> Self {
         let window = event_loop
             .create_window(WindowAttributes::default())
@@ -196,11 +188,11 @@ impl Renderer {
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
             .queue_family_index(queue_family_index);
 
-        let pool = unsafe { device.create_command_pool(&pool_create_info, None).unwrap() };
+        let command_pool = unsafe { device.create_command_pool(&pool_create_info, None).unwrap() };
 
         let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::default()
             .command_buffer_count(2)
-            .command_pool(pool)
+            .command_pool(command_pool)
             .level(vk::CommandBufferLevel::PRIMARY);
 
         let command_buffers = unsafe {
@@ -245,161 +237,10 @@ impl Renderer {
                 .unwrap()
         };
 
-        let index_buffer_info = vk::BufferCreateInfo::default()
-            .size(size_of_val(&INDICES) as u64)
-            .usage(vk::BufferUsageFlags::INDEX_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+        let buffer_components =
+            buffer_components::BufferComponents::new(&device, &device_memory_properties);
 
-        let index_buffer = unsafe { device.create_buffer(&index_buffer_info, None).unwrap() };
-
-        let index_buffer_memory_reqs =
-            unsafe { device.get_buffer_memory_requirements(index_buffer) };
-
-        let index_buffer_memory_index = find_memorytype_index(
-            &index_buffer_memory_reqs,
-            &device_memory_properties,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        )
-        .expect("Failed to find memory type index for index buffer");
-
-        let index_allocate_info = vk::MemoryAllocateInfo::default()
-            .allocation_size(index_buffer_memory_reqs.size)
-            .memory_type_index(index_buffer_memory_index);
-
-        let index_buffer_memory =
-            unsafe { device.allocate_memory(&index_allocate_info, None).unwrap() };
-
-        let index_ptr = unsafe {
-            device
-                .map_memory(
-                    index_buffer_memory,
-                    0,
-                    index_buffer_memory_reqs.size,
-                    vk::MemoryMapFlags::empty(),
-                )
-                .unwrap()
-        };
-
-        let mut index_slice: ash::util::Align<u32> = unsafe {
-            ash::util::Align::new(
-                index_ptr,
-                align_of::<u32>() as u64,
-                index_buffer_memory_reqs.size,
-            )
-        };
-        index_slice.copy_from_slice(&INDICES);
-
-        unsafe {
-            device.unmap_memory(index_buffer_memory);
-            device
-                .bind_buffer_memory(index_buffer, index_buffer_memory, 0)
-                .unwrap()
-        };
-
-        let vertex_input_buffer_info = vk::BufferCreateInfo::default()
-            .size(3 * size_of::<Vertex>() as u64)
-            .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-
-        let vertex_input_buffer = unsafe {
-            device
-                .create_buffer(&vertex_input_buffer_info, None)
-                .unwrap()
-        };
-
-        let vertex_input_buffer_memory_reqs =
-            unsafe { device.get_buffer_memory_requirements(vertex_input_buffer) };
-
-        let vertex_input_buffer_memory_index = find_memorytype_index(
-            &vertex_input_buffer_memory_reqs,
-            &device_memory_properties,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        )
-        .expect("Failed to find suitable memory type for vertex buffer");
-
-        let vertex_buffer_allocate_info = vk::MemoryAllocateInfo::default()
-            .allocation_size(vertex_input_buffer_memory_reqs.size)
-            .memory_type_index(vertex_input_buffer_memory_index);
-
-        let vertex_input_buffer_memory = unsafe {
-            device
-                .allocate_memory(&vertex_buffer_allocate_info, None)
-                .unwrap()
-        };
-
-        let vert_ptr = unsafe {
-            device
-                .map_memory(
-                    vertex_input_buffer_memory,
-                    0,
-                    vertex_input_buffer_memory_reqs.size,
-                    vk::MemoryMapFlags::empty(),
-                )
-                .unwrap()
-        };
-
-        let mut vert_align = unsafe {
-            ash::util::Align::new(
-                vert_ptr,
-                align_of::<Vertex>() as u64,
-                vertex_input_buffer_memory_reqs.size,
-            )
-        };
-        vert_align.copy_from_slice(&VERTICES);
-
-        unsafe {
-            device.unmap_memory(vertex_input_buffer_memory);
-            device
-                .bind_buffer_memory(vertex_input_buffer, vertex_input_buffer_memory, 0)
-                .unwrap();
-        };
-
-        let vertex_shader_code = shaders::compile(
-            &include_str!("../shaders/vertex_shader.glsl"),
-            shaderc::ShaderKind::Vertex,
-            "vertex_shader.glsl",
-            "main",
-        );
-
-        let vertex_shader_info =
-            vk::ShaderModuleCreateInfo::default().code(&vertex_shader_code.as_binary());
-
-        let vertex_shader_module = unsafe {
-            device
-                .create_shader_module(&vertex_shader_info, None)
-                .expect("Failed to create vertex shader module")
-        };
-
-        let fragment_shader_code = shaders::compile(
-            &include_str!("../shaders/fragment_shader.glsl"),
-            shaderc::ShaderKind::Fragment,
-            "fragment_shader.glsl",
-            "main",
-        );
-
-        let fragment_shader_info =
-            vk::ShaderModuleCreateInfo::default().code(&fragment_shader_code.as_binary());
-
-        let fragment_shader_module = unsafe {
-            device
-                .create_shader_module(&fragment_shader_info, None)
-                .expect("Failed to create fragment shader module")
-        };
-
-        let pipeline_shader_stage_infos = [
-            vk::PipelineShaderStageCreateInfo {
-                module: vertex_shader_module,
-                p_name: c"main".as_ptr(),
-                stage: vk::ShaderStageFlags::VERTEX,
-                ..Default::default()
-            },
-            vk::PipelineShaderStageCreateInfo {
-                module: fragment_shader_module,
-                p_name: c"main".as_ptr(),
-                stage: vk::ShaderStageFlags::FRAGMENT,
-                ..Default::default()
-            },
-        ];
+        let shader_components = shader_components::ShaderComponents::new(&device);
 
         let resize_dependent_components =
             resize_dependent_components::ResizeDependentComponents::new(
@@ -420,12 +261,10 @@ impl Renderer {
             &resize_dependent_components
                 .swapchain_components
                 .surface_format,
-            &pipeline_shader_stage_infos,
+            &shader_components.pipeline_shader_stage_infos,
             &resize_dependent_components.scissors,
             &resize_dependent_components.viewports,
         );
-
-        eprintln!("Renderer Created");
 
         Self {
             entry,
@@ -440,7 +279,7 @@ impl Renderer {
             present_queue,
             surface,
             resize_dependent_components,
-            pool,
+            command_pool,
             draw_command_buffer,
             setup_command_buffer,
             present_complete_semaphore,
@@ -448,12 +287,8 @@ impl Renderer {
             draw_commands_reuse_fence,
             setup_commands_reuse_fence,
             graphics_pipeline_components,
-            vertex_input_buffer,
-            index_buffer,
-            vertex_shader_module,
-            fragment_shader_module,
-            vertex_input_buffer_memory,
-            index_buffer_memory,
+            shader_components,
+            buffer_components,
             resize_dependent_component_rebuild_needed: false,
 
             #[cfg(debug_assertions)]
@@ -464,11 +299,8 @@ impl Renderer {
     pub fn draw_frame(&mut self) {
         if self.resize_dependent_component_rebuild_needed {
             unsafe { self.device.device_wait_idle().unwrap() };
-            resize_dependent_components::cleanup_resize_dependent_components(
-                &self.device,
-                &self.swapchain_loader,
-                &self.resize_dependent_components,
-            );
+            self.resize_dependent_components
+                .cleanup(&self.device, &self.swapchain_loader);
             self.resize_dependent_components =
                 resize_dependent_components::ResizeDependentComponents::new(
                     &self.device,
@@ -602,16 +434,23 @@ impl Renderer {
                     device.cmd_bind_vertex_buffers(
                         draw_command_buffer,
                         0,
-                        &[self.vertex_input_buffer],
+                        &[self.buffer_components.vertex_input_buffer],
                         &[0],
                     );
                     device.cmd_bind_index_buffer(
                         draw_command_buffer,
-                        self.index_buffer,
+                        self.buffer_components.index_buffer,
                         0,
                         vk::IndexType::UINT32,
                     );
-                    device.cmd_draw_indexed(draw_command_buffer, INDICES.len() as u32, 1, 0, 0, 1);
+                    device.cmd_draw_indexed(
+                        draw_command_buffer,
+                        buffer_components::INDICES.len() as u32,
+                        1,
+                        0,
+                        0,
+                        1,
+                    );
                     device.cmd_end_rendering(draw_command_buffer);
 
                     // dynamic rendering image layout transiton. see https://lesleylai.info/en/vk-khr-dynamic-rendering/
@@ -672,44 +511,13 @@ impl Renderer {
     }
 }
 
-#[derive(Clone, Copy)]
-struct Vertex {
-    position: [f32; 4],
-    color: [f32; 4],
-}
-const VERTICES: [Vertex; 3] = [
-    Vertex {
-        position: [-1.0, 1.0, 0.0, 1.0],
-        color: [0.0, 1.0, 0.0, 1.0],
-    },
-    Vertex {
-        position: [1.0, 1.0, 0.0, 1.0],
-        color: [0.0, 0.0, 1.0, 1.0],
-    },
-    Vertex {
-        position: [0.0, -1.0, 0.0, 1.0],
-        color: [1.0, 0.0, 0.0, 1.0],
-    },
-];
-const INDICES: [u32; 3] = [0, 1, 2];
-
-impl Drop for Renderer {
+impl Drop for Renderer<'_> {
     fn drop(&mut self) {
         unsafe {
             self.device.device_wait_idle().unwrap();
-            graphics_pipeline_components::cleanup_graphics_pipeline_components(
-                &self.device,
-                &self.graphics_pipeline_components,
-            );
-            self.device
-                .destroy_shader_module(self.vertex_shader_module, None);
-            self.device
-                .destroy_shader_module(self.fragment_shader_module, None);
-            self.device
-                .free_memory(self.vertex_input_buffer_memory, None);
-            self.device.destroy_buffer(self.vertex_input_buffer, None);
-            self.device.free_memory(self.index_buffer_memory, None);
-            self.device.destroy_buffer(self.index_buffer, None);
+            self.graphics_pipeline_components.cleanup(&self.device);
+            self.shader_components.cleanup(&self.device);
+            self.buffer_components.cleanup(&self.device);
             self.device
                 .destroy_semaphore(self.present_complete_semaphore, None);
             self.device
@@ -718,16 +526,13 @@ impl Drop for Renderer {
                 .destroy_fence(self.draw_commands_reuse_fence, None);
             self.device
                 .destroy_fence(self.setup_commands_reuse_fence, None);
-            resize_dependent_components::cleanup_resize_dependent_components(
-                &self.device,
-                &self.swapchain_loader,
-                &self.resize_dependent_components,
-            );
-            self.device.destroy_command_pool(self.pool, None);
+            self.resize_dependent_components
+                .cleanup(&self.device, &self.swapchain_loader);
+            self.device.destroy_command_pool(self.command_pool, None);
             self.device.destroy_device(None);
             self.surface_loader.destroy_surface(self.surface, None);
             #[cfg(debug_assertions)]
-            debug_components::cleanup_debug_components(&self.debug_components);
+            self.debug_components.cleanup();
             self.instance.destroy_instance(None);
         }
     }

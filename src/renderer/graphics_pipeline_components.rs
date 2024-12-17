@@ -2,9 +2,10 @@ use std::mem::offset_of;
 
 use ash::vk;
 
-use crate::renderer::Vertex;
-
-use super::resize_dependent_components::depth_image_components::DEPTH_IMAGE_FORMAT;
+use super::{
+    buffer_components::Vertex,
+    resize_dependent_components::depth_image_components::DEPTH_IMAGE_FORMAT,
+};
 
 pub struct GraphicsPipelineComponents {
     pub graphics_pipelines: Vec<vk::Pipeline>,
@@ -129,17 +130,13 @@ impl GraphicsPipelineComponents {
             pipeline_layout,
         }
     }
-}
-
-pub fn cleanup_graphics_pipeline_components(
-    device: &ash::Device,
-    graphics_pipeline_components: &GraphicsPipelineComponents,
-) {
-    unsafe {
-        device.device_wait_idle().unwrap();
-        for &pipeline in graphics_pipeline_components.graphics_pipelines.iter() {
-            device.destroy_pipeline(pipeline, None);
+    pub fn cleanup(&self, device: &ash::Device) {
+        unsafe {
+            device.device_wait_idle().unwrap();
+            for &pipeline in self.graphics_pipelines.iter() {
+                device.destroy_pipeline(pipeline, None);
+            }
+            device.destroy_pipeline_layout(self.pipeline_layout, None);
         }
-        device.destroy_pipeline_layout(graphics_pipeline_components.pipeline_layout, None);
     }
 }

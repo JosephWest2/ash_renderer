@@ -2,9 +2,8 @@ use ash::{
     khr::{surface, swapchain},
     vk,
 };
-use depth_image_components::{cleanup_depth_image_components, DepthImageComponents};
-use swapchain_components::{cleanup_swapchain_components, SwapchainComponents};
-
+use depth_image_components::DepthImageComponents;
+use swapchain_components::SwapchainComponents;
 
 pub mod depth_image_components;
 pub mod swapchain_components;
@@ -37,7 +36,6 @@ impl ResizeDependentComponents {
             swapchain_loader,
             physical_device,
         );
-        eprintln!("Swapchain Built");
 
         let depth_image_components = DepthImageComponents::new(
             device,
@@ -47,8 +45,6 @@ impl ResizeDependentComponents {
             setup_commands_reuse_fence,
             present_queue,
         );
-
-        eprintln!("Depth Images Built");
 
         let scissors = [swapchain_components.surface_resolution.into()];
         let viewports = [vk::Viewport {
@@ -67,17 +63,8 @@ impl ResizeDependentComponents {
             viewports,
         }
     }
-}
-
-pub fn cleanup_resize_dependent_components(
-    device: &ash::Device,
-    swapchain_loader: &swapchain::Device,
-    resize_dependent_components: &ResizeDependentComponents,
-) {
-    cleanup_depth_image_components(device, &resize_dependent_components.depth_image_components);
-    cleanup_swapchain_components(
-        device,
-        swapchain_loader,
-        &resize_dependent_components.swapchain_components,
-    );
+    pub fn cleanup(&self, device: &ash::Device, swapchain_loader: &swapchain::Device) {
+        self.depth_image_components.cleanup(device);
+        self.swapchain_components.cleanup(device, swapchain_loader);
+    }
 }

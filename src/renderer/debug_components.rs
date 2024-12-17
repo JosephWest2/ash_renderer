@@ -35,14 +35,12 @@ impl DebugComponents {
             debug_utils_loader,
         }
     }
-}
-
-pub fn cleanup_debug_components(debug_components: &DebugComponents) {
-    unsafe {
-        debug_components
-            .debug_utils_loader
-            .destroy_debug_utils_messenger(debug_components.debug_callback, None)
-    };
+    pub fn cleanup(&self) {
+        unsafe {
+            self.debug_utils_loader
+                .destroy_debug_utils_messenger(self.debug_callback, None)
+        };
+    }
 }
 
 unsafe extern "system" fn vulkan_debug_callback(

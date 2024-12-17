@@ -1,12 +1,12 @@
 use winit::event::WindowEvent;
 
-use crate::{renderer::{self, Renderer}, test};
+use crate::renderer::Renderer;
 
-pub struct App {
-    pub renderer: Option<Renderer>,
+pub struct App<'a> {
+    pub renderer: Option<Renderer<'a>>,
 }
 
-impl winit::application::ApplicationHandler for App {
+impl winit::application::ApplicationHandler for App<'_> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         self.renderer = Some(Renderer::new(&event_loop));
         self.renderer.as_mut().unwrap().window.request_redraw();
@@ -31,7 +31,10 @@ impl winit::application::ApplicationHandler for App {
                 event_loop.exit();
             }
             WindowEvent::Resized(_) => {
-                self.renderer.as_mut().unwrap().resize_dependent_component_rebuild_needed = true;
+                self.renderer
+                    .as_mut()
+                    .unwrap()
+                    .resize_dependent_component_rebuild_needed = true;
             }
             WindowEvent::RedrawRequested => {
                 self.renderer.as_mut().unwrap().draw_frame();
