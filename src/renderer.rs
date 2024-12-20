@@ -10,12 +10,14 @@ use winit::{
     window::WindowAttributes,
 };
 
-mod buffer_components;
 mod camera;
 mod debug_components;
+mod descriptor_components;
 mod graphics_pipeline_components;
+mod index_buffer_components;
 mod resize_dependent_components;
 mod shader_components;
+mod vertex_buffer_components;
 
 // Assume unused variables are required for persistence
 #[allow(unused)]
@@ -54,7 +56,8 @@ pub struct Renderer {
 
     graphics_pipeline_components: graphics_pipeline_components::GraphicsPipelineComponents,
 
-    buffer_components: buffer_components::BufferComponents,
+    vertex_buffer_components: vertex_buffer_components::VertexBufferComponents,
+    index_buffer_components: index_buffer_components::IndexBufferComponents,
 
     pub resize_dependent_component_rebuild_needed: bool,
 }
@@ -237,8 +240,13 @@ impl Renderer {
                 .unwrap()
         };
 
-        let buffer_components =
-            buffer_components::BufferComponents::new(&device, &device_memory_properties);
+        let index_buffer_components =
+            index_buffer_components::IndexBufferComponents::new(&device, &device_memory_properties);
+
+        let vertex_buffer_components = vertex_buffer_components::VertexBufferComponents::new(
+            &device,
+            &device_memory_properties,
+        );
 
         let shader_components = shader_components::ShaderComponents::new(&device);
 
@@ -288,7 +296,8 @@ impl Renderer {
             setup_commands_reuse_fence,
             graphics_pipeline_components,
             shader_components,
-            buffer_components,
+            index_buffer_components,
+            vertex_buffer_components,
             resize_dependent_component_rebuild_needed: false,
 
             #[cfg(debug_assertions)]
@@ -316,11 +325,13 @@ impl Renderer {
                 );
             self.resize_dependent_component_rebuild_needed = false;
         }
+
         unsafe {
             self.device
                 .wait_for_fences(&[self.draw_commands_reuse_fence], true, u64::MAX)
                 .unwrap()
         };
+
         let next_image_result = unsafe {
             self.swapchain_loader.acquire_next_image(
                 self.resize_dependent_components
@@ -331,6 +342,7 @@ impl Renderer {
                 vk::Fence::null(),
             )
         };
+
         let present_index = match next_image_result {
             Ok((present_index, suboptimal)) => {
                 if suboptimal {
@@ -346,6 +358,7 @@ impl Renderer {
                 panic!("Failed to acquire next image: {:?}", e);
             }
         };
+
         let color_attachment = vk::RenderingAttachmentInfo::default()
             .image_layout(vk::ImageLayout::ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::CLEAR)
@@ -434,18 +447,18 @@ impl Renderer {
                     device.cmd_bind_vertex_buffers(
                         draw_command_buffer,
                         0,
-                        &[self.buffer_components.vertex_input_buffer],
+                        &[self.vertex_buffer_components.vertex_buffer],
                         &[0],
                     );
                     device.cmd_bind_index_buffer(
                         draw_command_buffer,
-                        self.buffer_components.index_buffer,
+                        self.index_buffer_components.index_buffer,
                         0,
                         vk::IndexType::UINT32,
                     );
                     device.cmd_draw_indexed(
                         draw_command_buffer,
-                        buffer_components::INDICES.len() as u32,
+                        index_buffer_components::INDICES.len() as u32,
                         1,
                         0,
                         0,
@@ -484,11 +497,14 @@ impl Renderer {
         );
 
         let wait_semaphores = [self.rendering_complete_semaphore];
+
         let swapchains = [self
             .resize_dependent_components
             .swapchain_components
             .swapchain];
+
         let image_indices = [present_index];
+
         let present_info = vk::PresentInfoKHR::default()
             .wait_semaphores(&wait_semaphores)
             .swapchains(&swapchains)
@@ -498,6 +514,7 @@ impl Renderer {
             self.swapchain_loader
                 .queue_present(self.present_queue, &present_info)
         };
+
         match present_result {
             Err(e) => {
                 if e == vk::Result::ERROR_OUT_OF_DATE_KHR || e == vk::Result::SUBOPTIMAL_KHR {
@@ -517,7 +534,8 @@ impl Drop for Renderer {
             self.device.device_wait_idle().unwrap();
             self.graphics_pipeline_components.cleanup(&self.device);
             self.shader_components.cleanup(&self.device);
-            self.buffer_components.cleanup(&self.device);
+            self.index_buffer_components.cleanup(&self.device);
+            self.vertex_buffer_components.cleanup(&self.device);
             self.device
                 .destroy_semaphore(self.present_complete_semaphore, None);
             self.device

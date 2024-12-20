@@ -3,7 +3,7 @@ use std::mem::offset_of;
 use ash::vk;
 
 use super::{
-    buffer_components::Vertex,
+    vertex_buffer_components::Vertex,
     resize_dependent_components::depth_image_components::DEPTH_IMAGE_FORMAT,
 };
 
