@@ -32,13 +32,14 @@ impl Camera {
             -1.0 * self.pitch.cos() * self.yaw.cos(),
         )
     }
-    fn view_projection_matrix(&self) -> Matrix4<f32> {
-        let view = nalgebra::Matrix4::look_at_rh(
-            &self.position,
-            &(self.position + self.camera_forward()),
-            &self.up,
-        );
-        let proj = nalgebra::Perspective3::new(self.aspect_ratio, self.fovy, self.znear, self.zfar);
-        proj.as_matrix() * view
+    pub fn view_projection_matrix(&self) -> Matrix4<f32> {
+//        let view = nalgebra::Matrix4::look_at_rh(
+//            &self.position,
+//            &(self.position + self.camera_forward()),
+//            &self.up,
+//        );
+//        let proj = nalgebra::Perspective3::new(self.aspect_ratio, self.fovy, self.znear, self.zfar);
+//        proj.as_matrix() * view
+        Matrix4::new(0.5, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 1.0)
     }
 }

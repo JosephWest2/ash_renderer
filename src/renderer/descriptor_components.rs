@@ -5,11 +5,11 @@ use super::find_memorytype_index;
 
 pub struct DescriptorComponents {
     descriptor_pool: vk::DescriptorPool,
-    descriptor_sets: Vec<vk::DescriptorSet>,
-    descriptor_set_layout: vk::DescriptorSetLayout,
+    pub descriptor_sets: Vec<vk::DescriptorSet>,
+    pub descriptor_set_layout: vk::DescriptorSetLayout,
     uniform_buffers: Vec<vk::Buffer>,
     uniform_buffer_memories: Vec<vk::DeviceMemory>,
-    uniform_buffer_mappings: Vec<Align<Matrix4<f32>>>,
+    pub uniform_buffer_mappings: Option<Vec<Align<Matrix4<f32>>>>,
 }
 
 impl DescriptorComponents {
@@ -19,16 +19,17 @@ impl DescriptorComponents {
         present_image_count: u32,
     ) -> Self {
         // Buffers
-        let uniform_buffer_create_info = vk::BufferCreateInfo::default()
-            .size(size_of::<Matrix4<f32>>() as u64)
-            .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
-            .sharing_mode(vk::SharingMode::CONCURRENT);
 
         let mut uniform_buffers = Vec::with_capacity(present_image_count as usize);
         let mut uniform_buffer_memories = Vec::with_capacity(present_image_count as usize);
         let mut uniform_buffer_mappings = Vec::with_capacity(present_image_count as usize);
 
         for _ in 0..present_image_count {
+            let uniform_buffer_create_info = vk::BufferCreateInfo::default()
+                .size(size_of::<Matrix4<f32>>() as u64)
+                .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+
             let uniform_buffer = unsafe {
                 device
                     .create_buffer(&uniform_buffer_create_info, None)
@@ -51,6 +52,11 @@ impl DescriptorComponents {
                     .allocate_memory(&uniform_buffer_allocate_info, None)
                     .unwrap()
             };
+            unsafe {
+                device
+                    .bind_buffer_memory(uniform_buffer, uniform_buffer_memory, 0)
+                    .expect("Failed to bind uniform buffer memory");
+            }
             let memory_ptr = unsafe {
                 device
                     .map_memory(
@@ -62,13 +68,14 @@ impl DescriptorComponents {
                     .unwrap()
             };
 
-            let uniform_buffer_align: Align<Matrix4<f32>> = unsafe {
+            let mut uniform_buffer_align: Align<Matrix4<f32>> = unsafe {
                 Align::new(
                     memory_ptr,
                     align_of::<Matrix4<f32>>() as u64,
                     memory_reqs.size,
                 )
             };
+            uniform_buffer_align.copy_from_slice(&[Matrix4::identity() * 0.1, Matrix4::identity()]);
 
             uniform_buffers.push(uniform_buffer);
             uniform_buffer_memories.push(uniform_buffer_memory);
@@ -139,11 +146,11 @@ impl DescriptorComponents {
             descriptor_sets,
             uniform_buffers,
             uniform_buffer_memories,
-            uniform_buffer_mappings,
+            uniform_buffer_mappings: Some(uniform_buffer_mappings),
         }
     }
 
-    pub fn cleanup(&self, device: &ash::Device) {
+    pub fn cleanup(&mut self, device: &ash::Device) {
         unsafe {
             device.destroy_descriptor_pool(self.descriptor_pool, None);
             device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
@@ -153,5 +160,6 @@ impl DescriptorComponents {
                 device.destroy_buffer(self.uniform_buffers[i], None);
             }
         }
+        self.uniform_buffer_mappings = None;
     }
 }

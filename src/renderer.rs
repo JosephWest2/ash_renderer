@@ -1,16 +1,20 @@
-use std::ffi::{c_char, CStr};
+use std::{
+    convert::identity,
+    ffi::{c_char, CStr},
+};
 
 use ash::{
     khr::{surface, swapchain},
     vk::{self, ImageSubresourceRange, PhysicalDeviceType},
 };
 use graphics_pipeline_components::GraphicsPipelineComponents;
+use nalgebra::Matrix4;
 use winit::{
     raw_window_handle::{HasDisplayHandle, HasWindowHandle},
     window::WindowAttributes,
 };
 
-mod camera;
+pub mod camera;
 mod debug_components;
 mod descriptor_components;
 mod graphics_pipeline_components;
@@ -41,6 +45,8 @@ pub struct Renderer {
     surface: vk::SurfaceKHR,
 
     resize_dependent_components: resize_dependent_components::ResizeDependentComponents,
+
+    descriptor_components: descriptor_components::DescriptorComponents,
 
     command_pool: vk::CommandPool,
     draw_command_buffer: vk::CommandBuffer,
@@ -264,12 +270,22 @@ impl Renderer {
                 &present_queue,
             );
 
+        let descriptor_components = descriptor_components::DescriptorComponents::new(
+            &device,
+            &device_memory_properties,
+            resize_dependent_components
+                .swapchain_components
+                .present_images
+                .len() as u32,
+        );
+
         let graphics_pipeline_components = GraphicsPipelineComponents::new(
             &device,
             &resize_dependent_components
                 .swapchain_components
                 .surface_format,
             &shader_components.shader_stage_infos(),
+            &[descriptor_components.descriptor_set_layout],
             &resize_dependent_components.scissors,
             &resize_dependent_components.viewports,
         );
@@ -298,6 +314,7 @@ impl Renderer {
             shader_components,
             index_buffer_components,
             vertex_buffer_components,
+            descriptor_components,
             resize_dependent_component_rebuild_needed: false,
 
             #[cfg(debug_assertions)]
@@ -305,7 +322,7 @@ impl Renderer {
         }
     }
 
-    pub fn draw_frame(&mut self) {
+    pub fn draw_frame(&mut self, camera: &camera::Camera) {
         if self.resize_dependent_component_rebuild_needed {
             unsafe { self.device.device_wait_idle().unwrap() };
             self.resize_dependent_components
@@ -358,6 +375,15 @@ impl Renderer {
                 panic!("Failed to acquire next image: {:?}", e);
             }
         };
+
+        if self.descriptor_components.uniform_buffer_mappings.is_some() {
+            let mappings = self
+                .descriptor_components
+                .uniform_buffer_mappings
+                .as_mut()
+                .unwrap();
+            mappings[present_index as usize].copy_from_slice(&[camera.view_projection_matrix()]);
+        }
 
         let color_attachment = vk::RenderingAttachmentInfo::default()
             .image_layout(vk::ImageLayout::ATTACHMENT_OPTIMAL)
@@ -456,6 +482,14 @@ impl Renderer {
                         0,
                         vk::IndexType::UINT32,
                     );
+                    device.cmd_bind_descriptor_sets(
+                        draw_command_buffer,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        self.graphics_pipeline_components.pipeline_layout,
+                        0,
+                        &[self.descriptor_components.descriptor_sets[present_index as usize]],
+                        &[],
+                    );
                     device.cmd_draw_indexed(
                         draw_command_buffer,
                         index_buffer_components::INDICES.len() as u32,
@@ -536,6 +570,7 @@ impl Drop for Renderer {
             self.shader_components.cleanup(&self.device);
             self.index_buffer_components.cleanup(&self.device);
             self.vertex_buffer_components.cleanup(&self.device);
+            self.descriptor_components.cleanup(&self.device);
             self.device
                 .destroy_semaphore(self.present_complete_semaphore, None);
             self.device

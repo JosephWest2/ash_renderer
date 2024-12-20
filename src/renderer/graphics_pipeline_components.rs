@@ -17,6 +17,7 @@ impl GraphicsPipelineComponents {
         device: &ash::Device,
         surface_format: &vk::SurfaceFormatKHR,
         pipeline_shader_stage_infos: &[vk::PipelineShaderStageCreateInfo],
+        descriptor_set_layouts: &[vk::DescriptorSetLayout],
         scissors: &[vk::Rect2D],
         viewports: &[vk::Viewport],
     ) -> Self {
@@ -55,7 +56,10 @@ impl GraphicsPipelineComponents {
             .logic_op(vk::LogicOp::CLEAR)
             .attachments(&color_blend_attachment_states);
 
-        let layout_create_info = vk::PipelineLayoutCreateInfo::default();
+
+        let layout_create_info = vk::PipelineLayoutCreateInfo::default()
+            .set_layouts(descriptor_set_layouts);
+
         let pipeline_layout = unsafe {
             device
                 .create_pipeline_layout(&layout_create_info, None)
