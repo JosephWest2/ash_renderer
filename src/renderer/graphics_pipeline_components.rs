@@ -34,12 +34,12 @@ impl GraphicsPipelineComponents {
         let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::default()
             .depth_test_enable(true)
             .depth_write_enable(true)
-            .depth_bounds_test_enable(false)
+            .depth_bounds_test_enable(true)
             .stencil_test_enable(false)
-            .depth_compare_op(vk::CompareOp::NEVER)
-            //.front(noop_stencil_state)
-            //.back(noop_stencil_state)
-            .max_depth_bounds(1.0)
+            .depth_compare_op(vk::CompareOp::LESS_OR_EQUAL)
+            .front(noop_stencil_state)
+            .back(noop_stencil_state)
+            .max_depth_bounds(100.0)
             .min_depth_bounds(0.0);
 
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
@@ -70,6 +70,7 @@ impl GraphicsPipelineComponents {
 
         let rasterization_state = vk::PipelineRasterizationStateCreateInfo::default()
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
+            .cull_mode(vk::CullModeFlags::BACK)
             .line_width(1.0)
             .polygon_mode(vk::PolygonMode::FILL);
 

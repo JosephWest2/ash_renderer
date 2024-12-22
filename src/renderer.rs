@@ -2,7 +2,7 @@ use std::ffi::{c_char, CStr};
 
 use ash::{
     khr::{surface, swapchain},
-    vk::{self, ImageSubresourceRange, PhysicalDeviceType},
+    vk::{self, ClearValue, ImageSubresourceRange, PhysicalDeviceType},
 };
 use camera::MODEL_MATRIX;
 use descriptor_components::UniformBufferObject;
@@ -413,6 +413,9 @@ impl Renderer {
         let depth_attachment = vk::RenderingAttachmentInfo::default()
             .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::CLEAR)
+            .clear_value(ClearValue {
+                depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 }
+            })
             .store_op(vk::AttachmentStoreOp::DONT_CARE)
             .image_view(
                 self.resize_dependent_components
@@ -422,7 +425,7 @@ impl Renderer {
 
         let color_attachments = &[color_attachment];
         let rendering_info = vk::RenderingInfo::default()
-             // .depth_attachment(&depth_attachment)
+             .depth_attachment(&depth_attachment)
             .color_attachments(color_attachments)
             .layer_count(1)
             .render_area(
