@@ -8,29 +8,42 @@ pub struct VertexBufferComponents {
 }
 
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct Vertex {
-    pub position: [f32; 4],
+    pub position: [f32; 3],
     pub color: [f32; 4],
 }
-const VERTICES: [Vertex; 3] = [
+pub const VERTICES: [Vertex; 6] = [
     Vertex {
-        position: [-1.0, 1.0, 0.0, 1.0],
+        position: [-1.0, 1.0, 2.0],
         color: [0.0, 1.0, 0.0, 1.0],
     },
     Vertex {
-        position: [1.0, 1.0, 0.0, 1.0],
+        position: [1.0, 1.0, 2.0],
         color: [0.0, 0.0, 1.0, 1.0],
     },
     Vertex {
-        position: [0.0, -1.0, 0.0, 1.0],
+        position: [0.0, -1.0, 2.0],
         color: [1.0, 0.0, 0.0, 1.0],
+    },
+    Vertex {
+        position: [-1.0, -1.0, 3.0],
+        color: [0.0, 1.0, 0.5, 1.0],
+    },
+    Vertex {
+        position: [1.0, -1.0, 3.0],
+        color: [0.5, 0.0, 1.0, 1.0],
+    },
+    Vertex {
+        position: [0.0, 1.0, 3.0],
+        color: [1.0, 0.5, 0.0, 1.0],
     },
 ];
 
 impl VertexBufferComponents {
     pub fn new(device: &ash::Device, device_memory_properties: &vk::PhysicalDeviceMemoryProperties) -> Self {
         let vertex_input_buffer_info = vk::BufferCreateInfo::default()
-            .size(3 * size_of::<Vertex>() as u64)
+            .size(VERTICES.len() as u64 * size_of::<Vertex>() as u64)
             .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
 

@@ -3,8 +3,8 @@ use std::mem::offset_of;
 use ash::vk;
 
 use super::{
-    vertex_buffer_components::Vertex,
     resize_dependent_components::depth_image_components::DEPTH_IMAGE_FORMAT,
+    vertex_buffer_components::Vertex,
 };
 
 pub struct GraphicsPipelineComponents {
@@ -34,10 +34,13 @@ impl GraphicsPipelineComponents {
         let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::default()
             .depth_test_enable(true)
             .depth_write_enable(true)
-            .depth_compare_op(vk::CompareOp::LESS_OR_EQUAL)
-            .front(noop_stencil_state)
-            .back(noop_stencil_state)
-            .max_depth_bounds(1.0);
+            .depth_bounds_test_enable(false)
+            .stencil_test_enable(false)
+            .depth_compare_op(vk::CompareOp::NEVER)
+            //.front(noop_stencil_state)
+            //.back(noop_stencil_state)
+            .max_depth_bounds(1.0)
+            .min_depth_bounds(0.0);
 
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dynamic_state_info =
@@ -56,9 +59,8 @@ impl GraphicsPipelineComponents {
             .logic_op(vk::LogicOp::CLEAR)
             .attachments(&color_blend_attachment_states);
 
-
-        let layout_create_info = vk::PipelineLayoutCreateInfo::default()
-            .set_layouts(descriptor_set_layouts);
+        let layout_create_info =
+            vk::PipelineLayoutCreateInfo::default().set_layouts(descriptor_set_layouts);
 
         let pipeline_layout = unsafe {
             device
@@ -83,7 +85,7 @@ impl GraphicsPipelineComponents {
             vk::VertexInputAttributeDescription {
                 location: 0,
                 binding: 0,
-                format: vk::Format::R32G32B32A32_SFLOAT,
+                format: vk::Format::R32G32B32_SFLOAT,
                 offset: offset_of!(Vertex, position) as u32,
             },
             vk::VertexInputAttributeDescription {

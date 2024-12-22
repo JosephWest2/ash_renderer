@@ -1,14 +1,13 @@
-use std::{
-    convert::identity,
-    ffi::{c_char, CStr},
-};
+use std::ffi::{c_char, CStr};
 
 use ash::{
     khr::{surface, swapchain},
     vk::{self, ImageSubresourceRange, PhysicalDeviceType},
 };
+use camera::MODEL_MATRIX;
+use descriptor_components::UniformBufferObject;
 use graphics_pipeline_components::GraphicsPipelineComponents;
-use nalgebra::Matrix4;
+use nalgebra::{Matrix4, Normed, Vector3, Vector4};
 use winit::{
     raw_window_handle::{HasDisplayHandle, HasWindowHandle},
     window::WindowAttributes,
@@ -374,7 +373,7 @@ impl Renderer {
                 }
                 panic!("Failed to acquire next image: {:?}", e);
             }
-        };
+        } as usize;
 
         if self.descriptor_components.uniform_buffer_mappings.is_some() {
             let mappings = self
@@ -382,8 +381,24 @@ impl Renderer {
                 .uniform_buffer_mappings
                 .as_mut()
                 .unwrap();
-            mappings[present_index as usize].copy_from_slice(&[camera.view_projection_matrix()]);
+            mappings[present_index].copy_from_slice(&[UniformBufferObject {
+                model_matrix: camera::MODEL_MATRIX,
+                view_matrix: camera.view_matrix(),
+                projection_matrix: camera.projection_matrix(),
+            }]);
         }
+        dbg!(camera);
+        let test_transformed_vertex = 
+            camera.projection_matrix()
+            * camera.view_matrix()
+            * camera::MODEL_MATRIX
+            * Vector4::new(
+                vertex_buffer_components::VERTICES[0].position[0],
+                vertex_buffer_components::VERTICES[0].position[1],
+                vertex_buffer_components::VERTICES[0].position[2],
+                1.0,
+            );
+        dbg!(test_transformed_vertex);
 
         let color_attachment = vk::RenderingAttachmentInfo::default()
             .image_layout(vk::ImageLayout::ATTACHMENT_OPTIMAL)
@@ -392,12 +407,13 @@ impl Renderer {
             .image_view(
                 self.resize_dependent_components
                     .swapchain_components
-                    .present_image_views[present_index as usize],
+                    .present_image_views[present_index],
             );
 
         let depth_attachment = vk::RenderingAttachmentInfo::default()
             .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::DONT_CARE)
             .image_view(
                 self.resize_dependent_components
                     .depth_image_components
@@ -406,7 +422,7 @@ impl Renderer {
 
         let color_attachments = &[color_attachment];
         let rendering_info = vk::RenderingInfo::default()
-            .depth_attachment(&depth_attachment)
+             // .depth_attachment(&depth_attachment)
             .color_attachments(color_attachments)
             .layer_count(1)
             .render_area(
@@ -440,7 +456,7 @@ impl Renderer {
                         .image(
                             self.resize_dependent_components
                                 .swapchain_components
-                                .present_images[present_index as usize],
+                                .present_images[present_index],
                         )
                         .subresource_range(image_subresource_range);
                     device.cmd_pipeline_barrier(
@@ -487,7 +503,7 @@ impl Renderer {
                         vk::PipelineBindPoint::GRAPHICS,
                         self.graphics_pipeline_components.pipeline_layout,
                         0,
-                        &[self.descriptor_components.descriptor_sets[present_index as usize]],
+                        &[self.descriptor_components.descriptor_sets[present_index]],
                         &[],
                     );
                     device.cmd_draw_indexed(
@@ -514,7 +530,7 @@ impl Renderer {
                         .image(
                             self.resize_dependent_components
                                 .swapchain_components
-                                .present_images[present_index as usize],
+                                .present_images[present_index],
                         )
                         .subresource_range(image_subresource_range);
                     device.cmd_pipeline_barrier(
@@ -537,7 +553,7 @@ impl Renderer {
             .swapchain_components
             .swapchain];
 
-        let image_indices = [present_index];
+        let image_indices = [present_index as u32];
 
         let present_info = vk::PresentInfoKHR::default()
             .wait_semaphores(&wait_semaphores)

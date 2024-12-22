@@ -8,7 +8,7 @@ pub struct DepthImageComponents {
     pub depth_image_memory: vk::DeviceMemory,
 }
 
-pub const DEPTH_IMAGE_FORMAT: vk::Format = vk::Format::D16_UNORM;
+pub const DEPTH_IMAGE_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
 
 impl DepthImageComponents {
     pub fn new(

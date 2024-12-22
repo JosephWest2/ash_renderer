@@ -9,7 +9,15 @@ pub struct DescriptorComponents {
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     uniform_buffers: Vec<vk::Buffer>,
     uniform_buffer_memories: Vec<vk::DeviceMemory>,
-    pub uniform_buffer_mappings: Option<Vec<Align<Matrix4<f32>>>>,
+    pub uniform_buffer_mappings: Option<Vec<Align<UniformBufferObject>>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct UniformBufferObject {
+    pub model_matrix: Matrix4<f32>,
+    pub view_matrix: Matrix4<f32>,
+    pub projection_matrix: Matrix4<f32>,
 }
 
 impl DescriptorComponents {
@@ -26,9 +34,9 @@ impl DescriptorComponents {
 
         for _ in 0..present_image_count {
             let uniform_buffer_create_info = vk::BufferCreateInfo::default()
-                .size(size_of::<Matrix4<f32>>() as u64)
+                .size(size_of::<UniformBufferObject>() as u64)
                 .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+                .sharing_mode(vk::SharingMode::EXCLUSIVE);
 
             let uniform_buffer = unsafe {
                 device
@@ -68,14 +76,13 @@ impl DescriptorComponents {
                     .unwrap()
             };
 
-            let mut uniform_buffer_align: Align<Matrix4<f32>> = unsafe {
+            let uniform_buffer_align: Align<UniformBufferObject> = unsafe {
                 Align::new(
                     memory_ptr,
-                    align_of::<Matrix4<f32>>() as u64,
+                    align_of::<UniformBufferObject>() as u64,
                     memory_reqs.size,
                 )
             };
-            uniform_buffer_align.copy_from_slice(&[Matrix4::identity() * 0.1, Matrix4::identity()]);
 
             uniform_buffers.push(uniform_buffer);
             uniform_buffer_memories.push(uniform_buffer_memory);
@@ -126,7 +133,7 @@ impl DescriptorComponents {
             let descriptor_buffer_info = [vk::DescriptorBufferInfo::default()
                 .buffer(uniform_buffers[i])
                 .offset(0)
-                .range(size_of::<Matrix4<f32>>() as u64)];
+                .range(size_of::<UniformBufferObject>() as u64)];
 
             let descriptor_write = vk::WriteDescriptorSet::default()
                 .dst_set(descriptor_sets[i])

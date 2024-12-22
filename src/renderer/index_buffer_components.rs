@@ -7,7 +7,7 @@ pub struct IndexBufferComponents {
     index_buffer_memory: vk::DeviceMemory,
 }
 
-pub const INDICES: [u32; 3] = [0, 1, 2];
+pub const INDICES: [u32; 6] = [0, 1, 2, 3, 4, 5];
 
 impl IndexBufferComponents {
     pub fn new(device: &ash::Device, device_memory_properties: &vk::PhysicalDeviceMemoryProperties) -> Self {
