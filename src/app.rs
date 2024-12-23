@@ -25,8 +25,8 @@ impl winit::application::ApplicationHandler for App {
         match event {
             DeviceEvent::MouseMotion { delta } => {
                 let camera_controller = self.camera_controller.as_mut().unwrap();
-                camera_controller.mouse_delta.0 += delta.0 as f32;
-                camera_controller.mouse_delta.1 += delta.1 as f32;
+                camera_controller.mouse_delta_x += delta.0 as f32;
+                camera_controller.mouse_delta_y += delta.1 as f32;
             }
             _ => (),
         }

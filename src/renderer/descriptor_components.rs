@@ -105,7 +105,9 @@ impl DescriptorComponents {
                 .expect("Failed to create descriptor set layout.")
         };
 
-        let pool_sizes = [vk::DescriptorPoolSize::default().descriptor_count(present_image_count)];
+        let pool_sizes = [vk::DescriptorPoolSize::default()
+            .descriptor_count(present_image_count)
+            .ty(vk::DescriptorType::UNIFORM_BUFFER)];
 
         let pool_create_info = vk::DescriptorPoolCreateInfo::default()
             .pool_sizes(&pool_sizes)

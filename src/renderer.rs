@@ -387,18 +387,6 @@ impl Renderer {
                 projection_matrix: camera.projection_matrix(),
             }]);
         }
-        dbg!(camera);
-        let test_transformed_vertex = 
-            camera.projection_matrix()
-            * camera.view_matrix()
-            * camera::MODEL_MATRIX
-            * Vector4::new(
-                vertex_buffer_components::VERTICES[0].position[0],
-                vertex_buffer_components::VERTICES[0].position[1],
-                vertex_buffer_components::VERTICES[0].position[2],
-                1.0,
-            );
-        dbg!(test_transformed_vertex);
 
         let color_attachment = vk::RenderingAttachmentInfo::default()
             .image_layout(vk::ImageLayout::ATTACHMENT_OPTIMAL)
