@@ -72,6 +72,9 @@ impl VertexBufferComponents {
                 .allocate_memory(&vertex_buffer_allocate_info, None)
                 .unwrap()
         };
+            unsafe { device
+                .bind_buffer_memory(vertex_buffer, vertex_buffer_memory, 0)
+                .unwrap() };
 
         let vert_ptr = unsafe {
             device
@@ -95,9 +98,6 @@ impl VertexBufferComponents {
 
         unsafe {
             device.unmap_memory(vertex_buffer_memory);
-            device
-                .bind_buffer_memory(vertex_buffer, vertex_buffer_memory, 0)
-                .unwrap();
         };
 
         Self {
@@ -113,4 +113,5 @@ impl VertexBufferComponents {
             device.destroy_buffer(self.vertex_buffer, None);
         }
     }
+
 }

@@ -4,15 +4,14 @@ use ash::{
     khr::{surface, swapchain},
     vk::{self, ClearValue, ImageSubresourceRange, PhysicalDeviceType},
 };
-use camera::MODEL_MATRIX;
 use descriptor_components::UniformBufferObject;
 use graphics_pipeline_components::GraphicsPipelineComponents;
-use nalgebra::{Matrix4, Normed, Vector3, Vector4};
 use winit::{
     raw_window_handle::{HasDisplayHandle, HasWindowHandle},
     window::WindowAttributes,
 };
 
+mod buffer;
 pub mod camera;
 mod debug_components;
 mod descriptor_components;
@@ -21,6 +20,7 @@ mod index_buffer_components;
 mod resize_dependent_components;
 mod shader_components;
 mod vertex_buffer_components;
+mod vertex_buffer;
 
 // Assume unused variables are required for persistence
 #[allow(unused)]
@@ -66,6 +66,7 @@ pub struct Renderer {
 
     pub resize_dependent_component_rebuild_needed: bool,
 }
+
 
 impl Renderer {
     pub fn new(event_loop: &winit::event_loop::ActiveEventLoop) -> Self {
@@ -116,9 +117,9 @@ impl Renderer {
             .unwrap()
         };
 
-        let physical_devices = unsafe { instance.enumerate_physical_devices().unwrap() };
-
         let surface_loader = surface::Instance::new(&entry, &instance);
+
+        let physical_devices = unsafe { instance.enumerate_physical_devices().unwrap() };
 
         let (queue_family_index, physical_device) = physical_devices
             .iter()
@@ -384,7 +385,8 @@ impl Renderer {
             mappings[present_index].copy_from_slice(&[UniformBufferObject {
                 model_matrix: camera::MODEL_MATRIX,
                 view_matrix: camera.view_matrix(),
-                projection_matrix: camera.projection_matrix(),
+                projection_matrix: camera
+                    .projection_matrix(self.resize_dependent_components.aspect_ratio()),
             }]);
         }
 
@@ -402,7 +404,10 @@ impl Renderer {
             .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .clear_value(ClearValue {
-                depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 }
+                depth_stencil: vk::ClearDepthStencilValue {
+                    depth: 1.0,
+                    stencil: 0,
+                },
             })
             .store_op(vk::AttachmentStoreOp::DONT_CARE)
             .image_view(
@@ -413,7 +418,7 @@ impl Renderer {
 
         let color_attachments = &[color_attachment];
         let rendering_info = vk::RenderingInfo::default()
-             .depth_attachment(&depth_attachment)
+            .depth_attachment(&depth_attachment)
             .color_attachments(color_attachments)
             .layer_count(1)
             .render_area(

@@ -4,7 +4,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 
 mod app;
 mod renderer;
-mod test;
+mod model_loader;
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "full");

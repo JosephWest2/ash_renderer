@@ -67,4 +67,8 @@ impl ResizeDependentComponents {
         self.depth_image_components.cleanup(device);
         self.swapchain_components.cleanup(device, swapchain_loader);
     }
+    pub fn aspect_ratio(&self) -> f32 {
+        self.swapchain_components.surface_resolution.width as f32
+            / self.swapchain_components.surface_resolution.height as f32
+    }
 }

@@ -13,7 +13,6 @@ pub struct Camera {
     // radians
     pub theta: f32,
     up: Vector3<f32>,
-    aspect_ratio: f32,
     fovy: f32,
     znear: f32,
     zfar: f32,
@@ -33,7 +32,6 @@ impl Camera {
             phi: PI / 2.0,
             theta: 0.0,
             up: Vector3::y_axis().scale(-1.0),
-            aspect_ratio: 4.0 / 3.0,
             fovy: 45.0,
             znear: 0.01,
             zfar: 100.0,
@@ -59,8 +57,8 @@ impl Camera {
         );
         negative_y * look_at
     }
-    pub fn projection_matrix(&self) -> Matrix4<f32> {
-        Perspective3::new(self.aspect_ratio, self.fovy, self.znear, self.zfar).to_homogeneous()
+    pub fn projection_matrix(&self, aspect_ratio: f32) -> Matrix4<f32> {
+        Perspective3::new(aspect_ratio, self.fovy, self.znear, self.zfar).to_homogeneous()
     }
 }
 
