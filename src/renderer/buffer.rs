@@ -1,8 +1,6 @@
-use std::marker::PhantomData;
-
 use ash::vk;
 
-use crate::renderer::record_submit_commandbuffer;
+use crate::renderer::command_buffer_components::record_submit_commandbuffer;
 
 use super::find_memorytype_index;
 
@@ -12,19 +10,20 @@ pub struct Buffer<T> {
     size: usize,
     usage: vk::BufferUsageFlags,
     memory_properties: vk::MemoryPropertyFlags,
-    _data_type: PhantomData<T>,
+    mapping: Option<ash::util::Align<T>>,
 }
 
 impl<T: Copy> Buffer<T> {
     pub fn new(
         device: &ash::Device,
-        device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
+        physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
         usage: vk::BufferUsageFlags,
         sharing_mode: vk::SharingMode,
         memory_properties: vk::MemoryPropertyFlags,
-        data_type: PhantomData<T>,
-        buffer_size: usize,
+        buffer_len: usize,
+        persistent_mapping: bool,
     ) -> Self {
+        let buffer_size = size_of::<T>() * buffer_len;
         let buffer_create_info = vk::BufferCreateInfo::default()
             .size(buffer_size as u64)
             .usage(usage)
@@ -36,7 +35,7 @@ impl<T: Copy> Buffer<T> {
 
         let buffer_memory_index = find_memorytype_index(
             &buffer_memory_reqs,
-            device_memory_properties,
+            physical_device_memory_properties,
             memory_properties,
         )
         .expect("Failed to find suitable memory type for buffer");
@@ -53,17 +52,37 @@ impl<T: Copy> Buffer<T> {
                 .expect("Failed to bind buffer memory")
         };
 
+        let mapping = match persistent_mapping {
+            true => {
+                let data_ptr = unsafe {
+                    device
+                        .map_memory(
+                            memory,
+                            0,
+                            buffer_memory_reqs.size,
+                            vk::MemoryMapFlags::empty(),
+                        )
+                        .unwrap()
+                };
+
+                let vert_align = unsafe {
+                    ash::util::Align::new(data_ptr, align_of::<T>() as u64, buffer_memory_reqs.size)
+                };
+                Some(vert_align)
+            }
+            false => None,
+        };
+
         Self {
             buffer,
             memory,
             size: buffer_size,
             usage,
             memory_properties,
-            _data_type: data_type,
+            mapping,
         }
     }
-
-    pub fn write_data_direct(&self, device: &ash::Device, data: &[T]) {
+    pub fn write_data_direct(&mut self, device: &ash::Device, data: &[T]) {
         assert_eq!(
             self.memory_properties & vk::MemoryPropertyFlags::HOST_VISIBLE,
             vk::MemoryPropertyFlags::HOST_VISIBLE
@@ -73,6 +92,10 @@ impl<T: Copy> Buffer<T> {
             vk::MemoryPropertyFlags::HOST_COHERENT
         );
         assert!(data.len() <= self.size);
+        if self.mapping.is_some() {
+            self.mapping.as_mut().unwrap().copy_from_slice(data);
+            return;
+        }
         let buffer_memory_reqs = unsafe { device.get_buffer_memory_requirements(self.buffer) };
 
         let data_ptr = unsafe {
@@ -116,20 +139,26 @@ impl<T: Copy> Buffer<T> {
 
         record_submit_commandbuffer(
             device,
+            submit_queue,
             command_buffer,
             command_buffer_reuse_fence,
-            submit_queue,
             &[],
             &[],
             &[],
             |device, command_buffer| unsafe {
                 device.cmd_copy_buffer(
                     command_buffer,
-                    self.buffer,
                     staging_buffer.buffer,
+                    self.buffer,
                     &[copy_region],
                 );
             },
         );
+    }
+    pub fn cleanup(&self, device: &ash::Device) {
+        unsafe {
+            device.destroy_buffer(self.buffer, None);
+            device.free_memory(self.memory, None);
+        }
     }
 }

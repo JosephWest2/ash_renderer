@@ -1,11 +1,6 @@
 use ash::vk;
 
-use super::find_memorytype_index;
-
-pub struct VertexBufferComponents {
-    pub vertex_buffer: vk::Buffer,
-    vertex_buffer_memory: vk::DeviceMemory,
-}
+use super::buffer::Buffer;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -13,18 +8,19 @@ pub struct Vertex {
     pub position: [f32; 3],
     pub color: [f32; 4],
 }
+
 pub const VERTICES: [Vertex; 6] = [
     Vertex {
         position: [-1.0, 1.0, 2.0],
-        color: [0.0, 1.0, 0.0, 1.0],
+        color: [1.0, 1.0, 0.0, 1.0],
     },
     Vertex {
         position: [1.0, 1.0, 2.0],
-        color: [0.0, 0.0, 1.0, 1.0],
+        color: [1.0, 0.0, 1.0, 1.0],
     },
     Vertex {
         position: [0.0, -1.0, 2.0],
-        color: [1.0, 0.0, 0.0, 1.0],
+        color: [1.0, 1.0, 0.0, 1.0],
     },
     Vertex {
         position: [-1.0, -1.0, 3.0],
@@ -40,78 +36,58 @@ pub const VERTICES: [Vertex; 6] = [
     },
 ];
 
+pub struct VertexBufferComponents {
+    pub vertex_buffer: Buffer<Vertex>,
+    pub vertex_staging_buffer: Buffer<Vertex>,
+}
 impl VertexBufferComponents {
-    pub fn new(device: &ash::Device, device_memory_properties: &vk::PhysicalDeviceMemoryProperties) -> Self {
-        let vertex_input_buffer_info = vk::BufferCreateInfo::default()
-            .size(VERTICES.len() as u64 * size_of::<Vertex>() as u64)
-            .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-
-        let vertex_buffer = unsafe {
-            device
-                .create_buffer(&vertex_input_buffer_info, None)
-                .unwrap()
-        };
-
-        let vertex_buffer_memory_reqs =
-            unsafe { device.get_buffer_memory_requirements(vertex_buffer) };
-
-        let vertex_input_buffer_memory_index = find_memorytype_index(
-            &vertex_buffer_memory_reqs,
-            device_memory_properties,
+    pub fn new_unintialized(
+        device: &ash::Device,
+        physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
+    ) -> VertexBufferComponents {
+        let vertex_buffer = Buffer::<Vertex>::new(
+            device,
+            physical_device_memory_properties,
+            vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+            vk::SharingMode::EXCLUSIVE,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            VERTICES.len(),
+            false,
+        );
+        let vertex_staging_buffer = Buffer::<Vertex>::new(
+            device,
+            physical_device_memory_properties,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk::SharingMode::EXCLUSIVE,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        )
-        .expect("Failed to find suitable memory type for vertex buffer");
-
-        let vertex_buffer_allocate_info = vk::MemoryAllocateInfo::default()
-            .allocation_size(vertex_buffer_memory_reqs.size)
-            .memory_type_index(vertex_input_buffer_memory_index);
-
-        let vertex_buffer_memory = unsafe {
-            device
-                .allocate_memory(&vertex_buffer_allocate_info, None)
-                .unwrap()
-        };
-            unsafe { device
-                .bind_buffer_memory(vertex_buffer, vertex_buffer_memory, 0)
-                .unwrap() };
-
-        let vert_ptr = unsafe {
-            device
-                .map_memory(
-                    vertex_buffer_memory,
-                    0,
-                    vertex_buffer_memory_reqs.size,
-                    vk::MemoryMapFlags::empty(),
-                )
-                .unwrap()
-        };
-
-        let mut vert_align = unsafe {
-            ash::util::Align::new(
-                vert_ptr,
-                align_of::<Vertex>() as u64,
-                vertex_buffer_memory_reqs.size,
-            )
-        };
-        vert_align.copy_from_slice(&VERTICES);
-
-        unsafe {
-            device.unmap_memory(vertex_buffer_memory);
-        };
-
-        Self {
+            VERTICES.len(),
+            false,
+        );
+        VertexBufferComponents {
             vertex_buffer,
-            vertex_buffer_memory
+            vertex_staging_buffer,
         }
-
     }
-
+    pub fn update_vertices(
+        &mut self,
+        device: &ash::Device,
+        vertices: &[Vertex],
+        command_buffer: vk::CommandBuffer,
+        command_buffer_reuse_fence: vk::Fence,
+        queue: vk::Queue,
+    ) {
+        self.vertex_staging_buffer.write_data_direct(device, vertices);
+        self.vertex_buffer.write_from_staging(
+            &self.vertex_staging_buffer,
+            device,
+            command_buffer,
+            command_buffer_reuse_fence,
+            queue,
+        );
+    }
     pub fn cleanup(&self, device: &ash::Device) {
-        unsafe {
-            device.free_memory(self.vertex_buffer_memory, None);
-            device.destroy_buffer(self.vertex_buffer, None);
-        }
+        self.vertex_buffer.cleanup(device);
+        self.vertex_staging_buffer.cleanup(device);
     }
 
 }

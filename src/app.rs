@@ -1,19 +1,20 @@
 use winit::event::{DeviceEvent, WindowEvent};
 
-use crate::renderer::{camera::{self, CameraController}, Renderer};
+use crate::renderer::{self, camera::{self, CameraController}, Renderer};
 
 pub struct App {
     pub renderer: Option<Renderer>,
     pub camera: Option<camera::Camera>,
     pub camera_controller: Option<CameraController>,
+    pub renderer_user_settings: renderer::UserSettings,
 }
 
 impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        self.renderer = Some(Renderer::new(&event_loop));
+        self.renderer = Some(Renderer::new(&event_loop, &self.renderer_user_settings));
         self.camera = Some(camera::Camera::new());
         self.camera_controller = Some(CameraController::new(0.01, 0.01));
-        self.renderer.as_mut().unwrap().window.request_redraw();
+        self.renderer.as_ref().unwrap().request_redraw();
     }
 
     fn device_event(
@@ -75,7 +76,7 @@ impl winit::application::ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 self.camera_controller.as_mut().unwrap().update_camera(self.camera.as_mut().unwrap());
                 self.renderer.as_mut().unwrap().draw_frame(self.camera.as_ref().unwrap());
-                self.renderer.as_mut().unwrap().window.request_redraw();
+                self.renderer.as_ref().unwrap().request_redraw();
             }
             _ => (),
         }

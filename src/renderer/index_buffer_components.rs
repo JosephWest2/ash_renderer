@@ -1,79 +1,62 @@
 use ash::vk;
 
-use super::find_memorytype_index;
+use super::buffer::Buffer;
+
+pub type Index = u32;
+pub const INDICES: [Index; 6] = [0, 1, 2, 3, 4, 5];
 
 pub struct IndexBufferComponents {
-    pub index_buffer: vk::Buffer,
-    index_buffer_memory: vk::DeviceMemory,
+    pub index_buffer: Buffer<Index>,
+    pub index_staging_buffer: Buffer<Index>,
 }
 
-pub const INDICES: [u32; 6] = [0, 1, 2, 3, 4, 5];
-
 impl IndexBufferComponents {
-    pub fn new(device: &ash::Device, device_memory_properties: &vk::PhysicalDeviceMemoryProperties) -> Self {
-        let index_buffer_info = vk::BufferCreateInfo::default()
-            .size(size_of_val(&INDICES) as u64)
-            .usage(vk::BufferUsageFlags::INDEX_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-
-        let index_buffer = unsafe { device.create_buffer(&index_buffer_info, None).unwrap() };
-
-        let index_buffer_memory_reqs =
-            unsafe { device.get_buffer_memory_requirements(index_buffer) };
-
-        let index_buffer_memory_index = find_memorytype_index(
-            &index_buffer_memory_reqs,
-            device_memory_properties,
+    pub fn new_unintiailized(
+        device: &ash::Device,
+        physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
+    ) -> IndexBufferComponents {
+        let index_buffer = Buffer::<Index>::new(
+            device,
+            physical_device_memory_properties,
+            vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+            vk::SharingMode::EXCLUSIVE,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            INDICES.len(),
+            false,
+        );
+        let index_staging_buffer = Buffer::<Index>::new(
+            device,
+            physical_device_memory_properties,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk::SharingMode::EXCLUSIVE,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        )
-        .expect("Failed to find memory type index for index buffer");
-
-        let index_allocate_info = vk::MemoryAllocateInfo::default()
-            .allocation_size(index_buffer_memory_reqs.size)
-            .memory_type_index(index_buffer_memory_index);
-
-        let index_buffer_memory =
-            unsafe { device.allocate_memory(&index_allocate_info, None).unwrap() };
-
-        let index_ptr = unsafe {
-            device
-                .map_memory(
-                    index_buffer_memory,
-                    0,
-                    index_buffer_memory_reqs.size,
-                    vk::MemoryMapFlags::empty(),
-                )
-                .unwrap()
-        };
-
-        let mut index_slice: ash::util::Align<u32> = unsafe {
-            ash::util::Align::new(
-                index_ptr,
-                align_of::<u32>() as u64,
-                index_buffer_memory_reqs.size,
-            )
-        };
-        index_slice.copy_from_slice(&INDICES);
-        index_slice.copy_from_slice(&INDICES);
-        index_slice.copy_from_slice(&INDICES);
-        index_slice.copy_from_slice(&INDICES);
-
-        unsafe {
-            device.unmap_memory(index_buffer_memory);
-            device
-                .bind_buffer_memory(index_buffer, index_buffer_memory, 0)
-                .unwrap()
-        };
-
-        Self {
+            INDICES.len(),
+            false,
+        );
+        IndexBufferComponents {
             index_buffer,
-            index_buffer_memory
+            index_staging_buffer,
         }
     }
+    pub fn update_indices(
+        &mut self,
+        device: &ash::Device,
+        indices: &[Index],
+        command_buffer: vk::CommandBuffer,
+        command_buffer_reuse_fence: vk::Fence,
+        queue: vk::Queue,
+    ) {
+        self.index_staging_buffer.write_data_direct(device, indices);
+        self.index_buffer.write_from_staging(
+            &self.index_staging_buffer,
+            device,
+            command_buffer,
+            command_buffer_reuse_fence,
+            queue,
+        );
+    }
     pub fn cleanup(&self, device: &ash::Device) {
-        unsafe {
-            device.free_memory(self.index_buffer_memory, None);
-            device.destroy_buffer(self.index_buffer, None);
-        }
+        self.index_buffer.cleanup(device);
+        self.index_staging_buffer.cleanup(device);
     }
 }

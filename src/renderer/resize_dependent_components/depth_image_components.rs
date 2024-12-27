@@ -1,6 +1,8 @@
 use ash::vk;
 
-use crate::renderer::{find_memorytype_index, record_submit_commandbuffer};
+use crate::renderer::{command_buffer_components::record_submit_commandbuffer, find_memorytype_index};
+
+pub const DEPTH_IMAGE_FORMAT: vk::Format = vk::Format::D16_UNORM;
 
 pub struct DepthImageComponents {
     pub depth_image: vk::Image,
@@ -8,17 +10,15 @@ pub struct DepthImageComponents {
     pub depth_image_memory: vk::DeviceMemory,
 }
 
-pub const DEPTH_IMAGE_FORMAT: vk::Format = vk::Format::D16_UNORM;
-
 impl DepthImageComponents {
     pub fn new(
         device: &ash::Device,
-        device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
+        physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
         surface_resolution: &vk::Extent2D,
-        setup_command_buffer: &vk::CommandBuffer,
-        setup_commands_reuse_fence: &vk::Fence,
-        present_queue: &vk::Queue,
-    ) -> Self {
+        setup_command_buffer: vk::CommandBuffer,
+        setup_commands_reuse_fence: vk::Fence,
+        present_queue: vk::Queue,
+    ) -> DepthImageComponents {
         let sr = surface_resolution.clone();
         let depth_image_create_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
@@ -37,7 +37,7 @@ impl DepthImageComponents {
 
         let depth_image_memory_index = find_memorytype_index(
             &depth_image_memory_reqs,
-            &device_memory_properties,
+            &physical_device_memory_properties,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         )
         .expect("Cannot find suitable memory index for depth image");
@@ -60,9 +60,9 @@ impl DepthImageComponents {
 
         record_submit_commandbuffer(
             &device,
-            *setup_command_buffer,
-            *setup_commands_reuse_fence,
-            *present_queue,
+            present_queue,
+            setup_command_buffer,
+            setup_commands_reuse_fence,
             &[],
             &[],
             &[],
@@ -112,7 +112,7 @@ impl DepthImageComponents {
                 .unwrap()
         };
 
-        Self {
+        DepthImageComponents {
             depth_image,
             depth_image_memory,
             depth_image_view,

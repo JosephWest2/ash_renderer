@@ -2,14 +2,12 @@ use std::mem::offset_of;
 
 use ash::vk;
 
-use super::{
-    resize_dependent_components::depth_image_components::DEPTH_IMAGE_FORMAT,
-    vertex_buffer_components::Vertex,
-};
+use super::{resize_dependent_components::DEPTH_IMAGE_FORMAT, vertex_buffer_components::Vertex};
 
 pub struct GraphicsPipelineComponents {
     pub graphics_pipelines: Vec<vk::Pipeline>,
-    pub pipeline_layout: vk::PipelineLayout,
+    pub render_pipeline_layout: vk::PipelineLayout,
+    pub render_pipeline_index: usize,
 }
 
 impl GraphicsPipelineComponents {
@@ -20,7 +18,7 @@ impl GraphicsPipelineComponents {
         descriptor_set_layouts: &[vk::DescriptorSetLayout],
         scissors: &[vk::Rect2D],
         viewports: &[vk::Viewport],
-    ) -> Self {
+    ) -> GraphicsPipelineComponents {
         let viewport_state = vk::PipelineViewportStateCreateInfo::default()
             .scissors(scissors)
             .viewports(viewports);
@@ -59,12 +57,12 @@ impl GraphicsPipelineComponents {
             .logic_op(vk::LogicOp::CLEAR)
             .attachments(&color_blend_attachment_states);
 
-        let layout_create_info =
+        let render_layout_create_info =
             vk::PipelineLayoutCreateInfo::default().set_layouts(descriptor_set_layouts);
 
-        let pipeline_layout = unsafe {
+        let render_pipeline_layout = unsafe {
             device
-                .create_pipeline_layout(&layout_create_info, None)
+                .create_pipeline_layout(&render_layout_create_info, None)
                 .expect("Failed to create pipeline layout")
         };
 
@@ -115,7 +113,7 @@ impl GraphicsPipelineComponents {
             .dynamic_state(&dynamic_state_info)
             .multisample_state(&multisample_state)
             .color_blend_state(&color_blend_state)
-            .layout(pipeline_layout)
+            .layout(render_pipeline_layout)
             .rasterization_state(&rasterization_state)
             .viewport_state(&viewport_state)
             .input_assembly_state(&vertex_input_assembly_state)
@@ -132,9 +130,10 @@ impl GraphicsPipelineComponents {
                 .expect("Failed to create graphics pipelines")
         };
 
-        Self {
+        GraphicsPipelineComponents {
             graphics_pipelines,
-            pipeline_layout,
+            render_pipeline_layout,
+            render_pipeline_index: 0,
         }
     }
     pub fn cleanup(&self, device: &ash::Device) {
@@ -143,7 +142,7 @@ impl GraphicsPipelineComponents {
             for &pipeline in self.graphics_pipelines.iter() {
                 device.destroy_pipeline(pipeline, None);
             }
-            device.destroy_pipeline_layout(self.pipeline_layout, None);
+            device.destroy_pipeline_layout(self.render_pipeline_layout, None);
         }
     }
 }

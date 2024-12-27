@@ -13,6 +13,7 @@ fn main() {
         renderer: None,
         camera: None,
         camera_controller: None,
+        renderer_user_settings: Default::default()
     };
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     event_loop.set_control_flow(ControlFlow::Poll);

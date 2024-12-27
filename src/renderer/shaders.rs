@@ -1,11 +1,11 @@
-use ash::vk::{self, PipelineShaderStageCreateInfo};
+use ash::vk;
 
-pub struct ShaderComponents {
+pub struct Shaders {
     vertex_shader_module: vk::ShaderModule,
     fragment_shader_module: vk::ShaderModule,
 }
 
-impl ShaderComponents {
+impl Shaders {
     pub fn new(device: &ash::Device) -> Self {
         let vertex_shader_code = compile_shader(
             &include_str!("../../shaders/vertex_shader.glsl"),

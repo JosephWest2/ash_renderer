@@ -1,6 +1,6 @@
 use ash::{
-    khr::{surface, swapchain},
     vk,
+    khr
 };
 
 pub struct SwapchainComponents {
@@ -15,20 +15,20 @@ impl SwapchainComponents {
     pub fn new(
         device: &ash::Device,
         window: &winit::window::Window,
-        surface: &vk::SurfaceKHR,
-        surface_loader: &surface::Instance,
-        swapchain_loader: &swapchain::Device,
-        physical_device: &vk::PhysicalDevice,
-    ) -> Self {
+        surface: vk::SurfaceKHR,
+        surface_loader: &khr::surface::Instance,
+        swapchain_loader: &khr::swapchain::Device,
+        physical_device: vk::PhysicalDevice,
+    ) -> SwapchainComponents {
         let surface_format = unsafe {
             surface_loader
-                .get_physical_device_surface_formats(*physical_device, *surface)
+                .get_physical_device_surface_formats(physical_device, surface)
                 .unwrap()[0]
         };
 
         let surface_capabilities = unsafe {
             surface_loader
-                .get_physical_device_surface_capabilities(*physical_device, *surface)
+                .get_physical_device_surface_capabilities(physical_device, surface)
                 .unwrap()
         };
 
@@ -59,7 +59,7 @@ impl SwapchainComponents {
 
         let present_modes = unsafe {
             surface_loader
-                .get_physical_device_surface_present_modes(*physical_device, *surface)
+                .get_physical_device_surface_present_modes(physical_device, surface)
                 .unwrap()
         };
 
@@ -70,7 +70,7 @@ impl SwapchainComponents {
             .unwrap_or(vk::PresentModeKHR::FIFO);
 
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
-            .surface(*surface)
+            .surface(surface)
             .min_image_count(desired_image_count)
             .image_color_space(surface_format.color_space)
             .image_format(surface_format.format)
@@ -123,7 +123,11 @@ impl SwapchainComponents {
             surface_format,
         }
     }
-    pub fn cleanup(&self, device: &ash::Device, swapchain_loader: &swapchain::Device) {
+    pub fn get_aspect_ratio(&self) -> f32 {
+        self.surface_resolution.width as f32 / 
+            self.surface_resolution.height as f32
+    }
+    pub fn cleanup(&self, device: &ash::Device, swapchain_loader: &khr::swapchain::Device) {
         unsafe {
             device.device_wait_idle().unwrap();
             for &view in self.present_image_views.iter() {
